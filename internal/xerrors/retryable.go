@@ -71,6 +71,8 @@ func Retryable(err error, opts ...RetryableErrorOption) error {
 	return re
 }
 
+// RetryableError return Error if err is retriable error, else nil
+// TODO: think about rename to AsRetryableError
 func RetryableError(err error) Error {
 	var e *retryableError
 	if errors.As(err, &e) {

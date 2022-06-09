@@ -19,7 +19,8 @@ var errPartitionStopped = xerrors.Wrap(errors.New("partition stopped"))
 
 type partitionSessionID = pqstreamreader.PartitionSessionID
 
-type readerPump struct {
+type readerPumpImpl struct {
+	cfg    readerPumpConfig
 	ctx    context.Context
 	cancel ictx.CancelErrFunc
 
@@ -29,8 +30,6 @@ type readerPump struct {
 
 	readResponsesParseSignal chan struct{}
 	messageBatches           chan *Batch
-	cred                     credentials.Credentials
-	credUpdateInterval       time.Duration
 
 	m             sync.RWMutex
 	err           error
@@ -38,24 +37,43 @@ type readerPump struct {
 	readResponses []*pqstreamreader.ReadResponse // use slice instead channel for guarantee read grpc stream without block
 }
 
-func newReaderPump(stopPump context.Context, bufferSize int, stream ReaderStream, cred credentials.Credentials, credUpdateInterval time.Duration) *readerPump {
-	stopPump, cancel := ictx.WithErrCancel(stopPump)
-	res := &readerPump{
+type readerPumpConfig struct {
+	BaseContext        context.Context
+	ProtoBufferSize    int
+	Cred               credentials.Credentials
+	CredUpdateInterval time.Duration
+	InitRequest        pqstreamreader.InitRequest
+}
+
+func newReaderPumpConfig() readerPumpConfig {
+	return readerPumpConfig{
+		BaseContext:        context.Background(),
+		ProtoBufferSize:    1024 * 1024,
+		CredUpdateInterval: time.Hour,
+	}
+}
+
+func newReaderPump(stream ReaderStream, cfg readerPumpConfig) (*readerPumpImpl, error) {
+	stopPump, cancel := ictx.WithErrCancel(cfg.BaseContext)
+	res := &readerPumpImpl{
+		cfg:                      cfg,
 		ctx:                      stopPump,
 		freeBytes:                make(chan int, 1),
 		stream:                   stream,
 		cancel:                   cancel,
-		cred:                     cred,
-		credUpdateInterval:       credUpdateInterval,
 		readResponsesParseSignal: make(chan struct{}, 1),
 		messageBatches:           make(chan *Batch),
 	}
 	res.sessionController.init(res.ctx, res)
-	res.freeBytes <- bufferSize
-	return res
+	res.freeBytes <- cfg.ProtoBufferSize
+	err := res.start()
+	if err == nil {
+		return res, nil
+	}
+	return nil, err
 }
 
-func (r *readerPump) ReadMessageBatch(ctx context.Context) (*Batch, error) {
+func (r *readerPumpImpl) ReadMessageBatch(ctx context.Context) (*Batch, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -74,28 +92,28 @@ func (r *readerPump) ReadMessageBatch(ctx context.Context) (*Batch, error) {
 	}
 }
 
-func (r *readerPump) Commit(ctx context.Context, offset CommitBatch) error {
+func (r *readerPumpImpl) Commit(ctx context.Context, offset CommitBatch) error {
 	req := &pqstreamreader.CommitOffsetRequest{
 		PartitionsOffsets: offset.toPartitionsOffsets(),
 	}
 	return r.stream.Send(req)
 }
 
-func (r *readerPump) send(mess pqstreamreader.ClientMessage) error {
+func (r *readerPumpImpl) send(mess pqstreamreader.ClientMessage) error {
 	err := r.stream.Send(mess)
 	if err != nil {
-		r.close(err)
+		r.Close(err)
 	}
 	return err
 }
 
-func (r *readerPump) Start() error {
+func (r *readerPumpImpl) start() error {
 	if err := r.setStarted(); err != nil {
 		return err
 	}
 
 	if err := r.initSession(); err != nil {
-		r.close(err)
+		r.Close(err)
 	}
 
 	go r.readMessagesLoop()
@@ -105,7 +123,7 @@ func (r *readerPump) Start() error {
 	return nil
 }
 
-func (r *readerPump) setStarted() error {
+func (r *readerPumpImpl) setStarted() error {
 	r.m.Lock()
 	defer r.m.Unlock()
 
@@ -117,7 +135,7 @@ func (r *readerPump) setStarted() error {
 	return nil
 }
 
-func (r *readerPump) initSession() error {
+func (r *readerPumpImpl) initSession() error {
 	mess := pqstreamreader.InitRequest{
 		TopicsReadSettings: []pqstreamreader.TopicReadSettings{
 			{
@@ -155,18 +173,18 @@ func (r *readerPump) initSession() error {
 	return nil
 }
 
-func (r *readerPump) readMessagesLoop() {
+func (r *readerPumpImpl) readMessagesLoop() {
 	for {
 		serverMessage, err := r.stream.Recv()
 		if err != nil {
-			r.close(err)
+			r.Close(err)
 			return
 		}
 
 		status := serverMessage.StatusData()
 		if status.Status != pqstreamreader.StatusSuccess {
 			// TODO: actualize error message
-			r.close(xerrors.WithStackTrace(fmt.Errorf("bad status from pq grpc stream: %v", status.Status)))
+			r.Close(xerrors.WithStackTrace(fmt.Errorf("bad status from pq grpc stream: %v", status.Status)))
 		}
 
 		switch m := serverMessage.(type) {
@@ -174,23 +192,23 @@ func (r *readerPump) readMessagesLoop() {
 			r.onReadResponse(m)
 		case *pqstreamreader.StartPartitionSessionRequest:
 			if err = r.sessionController.onStartPartitionSessionRequest(m); err != nil {
-				r.close(err)
+				r.Close(err)
 				return
 			}
 		case *pqstreamreader.StopPartitionSessionRequest:
 			if err = r.sessionController.onStopPartitionSessionRequest(m); err != nil {
-				r.close(err)
+				r.Close(err)
 				return
 			}
 		case *pqstreamreader.CommitOffsetResponse:
 			if err = r.onCommitResponse(m); err != nil {
-				r.close(err)
+				r.Close(err)
 				return
 			}
 
 		case *pqstreamreader.PartitionSessionStatusResponse:
 			if err = r.sessionController.onPartitionStatusResponse(m); err != nil {
-				r.close(err)
+				r.Close(err)
 			}
 			return
 
@@ -198,12 +216,12 @@ func (r *readerPump) readMessagesLoop() {
 			// skip
 		default:
 			// TODO: remove before release
-			r.close(xerrors.WithStackTrace(fmt.Errorf("receive unexpected message: %#v (%v)", m, reflect.TypeOf(m))))
+			r.Close(xerrors.WithStackTrace(fmt.Errorf("receive unexpected message: %#v (%v)", m, reflect.TypeOf(m))))
 		}
 	}
 }
 
-func (r *readerPump) dataRequestLoop() {
+func (r *readerPumpImpl) dataRequestLoop() {
 	if r.ctx.Err() != nil {
 		return
 	}
@@ -213,23 +231,23 @@ func (r *readerPump) dataRequestLoop() {
 	for {
 		select {
 		case <-doneChan:
-			r.close(r.ctx.Err())
+			r.Close(r.ctx.Err())
 			return
 
 		case free := <-r.freeBytes:
 			err := r.stream.Send(&pqstreamreader.ReadRequest{BytesSize: free})
 			if err != nil {
-				r.close(err)
+				r.Close(err)
 			}
 		}
 	}
 }
 
-func (r *readerPump) dataParseLoop() {
+func (r *readerPumpImpl) dataParseLoop() {
 	for {
 		select {
 		case <-r.ctx.Done():
-			r.close(r.ctx.Err())
+			r.Close(r.ctx.Err())
 			return
 
 		case <-r.readResponsesParseSignal:
@@ -249,8 +267,8 @@ func (r *readerPump) dataParseLoop() {
 	}
 }
 
-func (r *readerPump) updateTokenLoop() {
-	ticker := time.NewTicker(r.credUpdateInterval)
+func (r *readerPumpImpl) updateTokenLoop() {
+	ticker := time.NewTicker(r.cfg.CredUpdateInterval)
 	defer ticker.Stop()
 
 	readerCancel := r.ctx.Done()
@@ -269,7 +287,7 @@ func (r *readerPump) updateTokenLoop() {
 	}
 }
 
-func (r *readerPump) getFirstReadResponse() (res *pqstreamreader.ReadResponse) {
+func (r *readerPumpImpl) getFirstReadResponse() (res *pqstreamreader.ReadResponse) {
 	r.m.Lock()
 	defer r.m.Unlock()
 
@@ -283,7 +301,7 @@ func (r *readerPump) getFirstReadResponse() (res *pqstreamreader.ReadResponse) {
 	return res
 }
 
-func (r *readerPump) dataParse(mess *pqstreamreader.ReadResponse) {
+func (r *readerPumpImpl) dataParse(mess *pqstreamreader.ReadResponse) {
 	batchesCount := 0
 	for i := range mess.Partitions {
 		batchesCount += len(mess.Partitions[i].Batches)
@@ -307,7 +325,7 @@ func (r *readerPump) dataParse(mess *pqstreamreader.ReadResponse) {
 	}
 }
 
-func (r *readerPump) close(err error) {
+func (r *readerPumpImpl) Close(err error) {
 	r.m.Lock()
 	defer r.m.Lock()
 
@@ -319,7 +337,7 @@ func (r *readerPump) close(err error) {
 	r.cancel(err)
 }
 
-func (r *readerPump) onCommitResponse(mess *pqstreamreader.CommitOffsetResponse) error {
+func (r *readerPumpImpl) onCommitResponse(mess *pqstreamreader.CommitOffsetResponse) error {
 	for i := range mess.Committed {
 		commit := &mess.Committed[i]
 		err := r.sessionController.sessionModify(commit.PartitionSessionID, func(p *partitionSessionData) {
@@ -333,7 +351,7 @@ func (r *readerPump) onCommitResponse(mess *pqstreamreader.CommitOffsetResponse)
 	return nil
 }
 
-func (r *readerPump) onReadResponse(mess *pqstreamreader.ReadResponse) {
+func (r *readerPumpImpl) onReadResponse(mess *pqstreamreader.ReadResponse) {
 	r.m.Lock()
 	defer r.m.Unlock()
 
@@ -345,8 +363,8 @@ func (r *readerPump) onReadResponse(mess *pqstreamreader.ReadResponse) {
 	}
 }
 
-func (r *readerPump) updateToken(ctx context.Context) error {
-	token, err := r.cred.Token(ctx)
+func (r *readerPumpImpl) updateToken(ctx context.Context) error {
+	token, err := r.cfg.Cred.Token(ctx)
 	if err != nil {
 		// TODO: log
 		return xerrors.WithStackTrace(err)
@@ -415,13 +433,13 @@ type commitWaiter struct {
 
 type pumpSessionController struct {
 	ctx context.Context
-	r   *readerPump
+	r   *readerPumpImpl
 
 	m        sync.RWMutex
 	sessions map[partitionSessionID]*partitionSessionData
 }
 
-func (c *pumpSessionController) init(ctx context.Context, reader *readerPump) {
+func (c *pumpSessionController) init(ctx context.Context, reader *readerPumpImpl) {
 	c.ctx = ctx
 	c.r = reader
 	c.sessions = make(map[partitionSessionID]*partitionSessionData)
@@ -504,6 +522,9 @@ func (c *pumpSessionController) onPartitionStatusResponse(m *pqstreamreader.Part
 	})
 }
 
-func TestCreatePump(ctx context.Context, stream ReaderStream, cred credentials.Credentials, interval time.Duration) *readerPump {
-	return newReaderPump(ctx, 1024*1024*1024, stream, cred, interval)
+func TestCreatePump(ctx context.Context, stream ReaderStream, cred credentials.Credentials) (*readerPumpImpl, error) {
+	cfg := newReaderPumpConfig()
+	cfg.BaseContext = ctx
+	cfg.Cred = cred
+	return newReaderPump(stream, cfg)
 }

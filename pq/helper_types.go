@@ -18,6 +18,12 @@ func CommitBatchFromMessages(messages ...Message) CommitBatch {
 	return res
 }
 
+func CommitBatchFromCommitableByOffset(commitable ...CommitableByOffset) CommitBatch {
+	var res CommitBatch
+	res.Append(commitable...)
+	return res
+}
+
 func (b *CommitBatch) Append(messages ...CommitableByOffset) {
 	for i := range messages {
 		*b = append(*b, messages[i].GetCommitOffset())

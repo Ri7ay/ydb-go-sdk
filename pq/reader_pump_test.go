@@ -30,8 +30,8 @@ func TestInit(t *testing.T) {
 	grpcStream, err := pqClient.StreamingRead(ctx)
 	require.NoError(t, err)
 
-	pump := pq.TestCreatePump(ctx, pqstreamreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials(), time.Hour)
-	require.NoError(t, pump.Start())
+	pump, err := pq.TestCreatePump(ctx, pqstreamreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
+	require.NoError(t, err)
 	batch, err := pump.ReadMessageBatch(ctx)
 	require.NoError(t, err)
 	for _, mess := range batch.Messages {
