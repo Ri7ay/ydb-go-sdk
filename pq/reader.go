@@ -43,51 +43,16 @@ func (r *Reader) ReadMessage(context.Context) (Message, error) {
 	return Message{}, nil
 }
 
-func (r *Reader) CommitMessage(ctx context.Context, messages ...Message) error {
-	batch := make(CommitBatch, 0, len(messages))
-	batch.AppendMessages(messages...)
+func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
+	batch := make(CommitBatch, 0, 1)
+	batch.Append(offset)
 	return r.stream().Commit(ctx, batch)
 }
 
-func (r *Reader) CommitBatch(ctx context.Context, batch Batch) error {
+func (r *Reader) CommitOffsets(ctx context.Context, message ...CommitOffset) {
 	panic("not implemented")
 }
 
-func (r *Reader) PartitionControler() *PartitionController {
+func (r *Reader) CommitMessages(ctx context.Context, message ...Message) error {
 	panic("not implemented")
-}
-
-type PartitionController struct{}
-
-// TODO: объявить более специализированные типы
-
-type StartPartitionSessionRequest struct {
-	Session         *PartitionSession
-	CommittedOffset int64
-	EndOffset       int64
-}
-
-type StartPartitionSessionResponse = pqstreamreader.StartPartitionSessionResponse
-type StopPartitionSessionRequest = pqstreamreader.StopPartitionSessionRequest
-type StopPartitionSessionResponse = pqstreamreader.StopPartitionSessionResponse
-type PartitionSessionStatusResponse = pqstreamreader.PartitionSessionStatusResponse
-
-func (pc *PartitionController) OnSessionStart(callback func(info *StartPartitionSessionRequest, response *StartPartitionSessionResponse) error) {
-	/*
-		callback будет вызываться при каждом старте партиций
-		info - информация о новой партиции
-		response - предполагаемый ответ серверу, предзаполненный SDK, который можно менять.
-	*/
-}
-
-func (pc *PartitionController) OnSessionShutdown(callback func(info *StopPartitionSessionRequest, response *StopPartitionSessionResponse) error) {
-	/*
-		callback будет вызываться при каждом стопе
-		info - информация о новой партиции
-		response - предполагаемый ответ серверу, предзаполненный SDK, который можно менять.
-	*/
-}
-
-func (pc *PartitionController) OnPartitionStatus(callback func(info *PartitionSessionStatusResponse)) {
-
 }
