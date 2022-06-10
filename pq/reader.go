@@ -49,6 +49,7 @@ type Reader struct {
 	backgrounds sync.WaitGroup
 
 	needReconnectSignal chan struct{}
+	batches             chan *Batch
 
 	m               locker.RWLocker
 	connectionError error
@@ -116,7 +117,7 @@ func (r *Reader) reconnectLoop() {
 }
 
 func (r *Reader) reconnect() (readerPump, error) {
-	oldStream, _ := r.stream()
+	oldStream, _ := r.pump()
 	oldStream.Close(xerrors.WithStackTrace(errors.New("reader need reconnect")))
 
 	ctx, cancel := context.WithTimeout(r.ctx, reconnectDuration)
@@ -134,7 +135,7 @@ func (r *Reader) reconnect() (readerPump, error) {
 	return pump, nil
 }
 
-func (r *Reader) fireReconnectOnRepeatableError(err error) {
+func (r *Reader) fireReconnectOnRetryableError(err error) {
 	if xerrors.RetryableError(err) == nil {
 		return
 	}
@@ -147,41 +148,84 @@ func (r *Reader) fireReconnectOnRepeatableError(err error) {
 	}
 }
 
-func (r *Reader) stream() (readerPump, error) {
+func (r *Reader) pump() (readerPump, error) {
 	r.m.RLock()
 	defer r.m.RUnlock()
 
 	return r.pumpVal, r.connectionError
 }
 
+func (r *Reader) connectedPump(ctx context.Context) (readerPump, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if r.ctx.Err() != nil {
+		return nil, r.ctx.Err()
+	}
+
+	var res readerPump
+	r.m.WithLock(func() {
+		if r.connectionError == nil {
+			res = r.pumpVal
+		}
+	})
+	if res != nil {
+		return res, nil
+	}
+
+	// TODO: improve loop for work on events instead of timer
+	ticker := r.clock.NewTicker(streamPollingInterval)
+	for {
+		select {
+		case <-ticker.Chan():
+			r.m.WithLock(func() {
+				if r.connectionError == nil {
+					res = r.pumpVal
+				}
+			})
+			if res != nil {
+				return res, nil
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-r.ctx.Done():
+			return nil, r.ctx.Err()
+		}
+	}
+}
+
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
-	doneChannel := ctx.Done()
+	var res *Batch
+	var err error
 
-	// TODO: draft, need improve
+	err = r.retryOnPump(ctx, func(ctx context.Context, pump readerPump) error {
+		res, err = pump.ReadMessageBatch(ctx)
+		return err
+	})
+
+	return res, err
+}
+
+func (r *Reader) retryOnPump(ctx context.Context, callback func(ctx context.Context, pump readerPump) error) error {
 	for {
-		stream, err := r.stream()
+		pump, err := r.connectedPump(ctx)
 		if err != nil {
-			if xerrors.RetryableError(err) == nil {
-				return nil, err
-			}
-			select {
-			case <-r.clock.After(streamPollingInterval):
-				continue
-			case <-doneChannel:
-				return nil, ctx.Err()
-			}
+			return err
 		}
 
-		batch, err := stream.ReadMessageBatch(ctx)
+		err = callback(ctx, pump)
 		if err == nil {
-			return batch, err
+			return nil
 		}
+
 		if xerrors.RetryableError(err) == nil {
-			continue
+			return err
 		}
-		return nil, err
+
+		r.fireReconnectOnRetryableError(err)
+		return err
 	}
 }
 
@@ -194,7 +238,7 @@ func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
 }
 
 func (r *Reader) CommitBatch(ctx context.Context, commitBatch CommitBatch) error {
-	stream, err := r.stream()
+	stream, err := r.pump()
 	if err != nil {
 		return err
 	}
