@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ictx"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -22,7 +22,7 @@ type partitionSessionID = pqstreamreader.PartitionSessionID
 type readerPumpImpl struct {
 	cfg    readerPumpConfig
 	ctx    context.Context
-	cancel ictx.CancelErrFunc
+	cancel xcontext.CancelErrFunc
 
 	freeBytes         chan int
 	stream            ReaderStream
@@ -54,7 +54,7 @@ func newReaderPumpConfig() readerPumpConfig {
 }
 
 func newReaderPump(stream ReaderStream, cfg readerPumpConfig) (*readerPumpImpl, error) {
-	stopPump, cancel := ictx.WithErrCancel(cfg.BaseContext)
+	stopPump, cancel := xcontext.WithErrCancel(cfg.BaseContext)
 	res := &readerPumpImpl{
 		cfg:                      cfg,
 		ctx:                      stopPump,
@@ -382,9 +382,9 @@ type partitionSessionData struct {
 	PartitionID int64
 
 	graceful       context.Context
-	gracefulCancel ictx.CancelErrFunc
+	gracefulCancel xcontext.CancelErrFunc
 	alive          context.Context
-	aliveCancel    ictx.CancelErrFunc
+	aliveCancel    xcontext.CancelErrFunc
 	commitWaiters  []commitWaiter
 }
 
@@ -394,8 +394,8 @@ func newPartitionSessionData(readerCtx context.Context, mess *pqstreamreader.Sta
 		PartitionID: mess.PartitionSession.PartitionID,
 	}
 
-	res.graceful, res.gracefulCancel = ictx.WithErrCancel(context.Background())
-	res.alive, res.aliveCancel = ictx.WithErrCancel(readerCtx)
+	res.graceful, res.gracefulCancel = xcontext.WithErrCancel(context.Background())
+	res.alive, res.aliveCancel = xcontext.WithErrCancel(readerCtx)
 	return res
 }
 

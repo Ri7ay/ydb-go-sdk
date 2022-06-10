@@ -8,9 +8,9 @@ import (
 
 	"github.com/jonboulle/clockwork"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/locker"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ictx"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -38,20 +38,19 @@ type ReaderStreamConnector interface {
 }
 
 type Reader struct {
+	background backgroundworkers.BackgroundWorker
+
 	connector     ReaderStreamConnector
 	streamCreator func(stream ReaderStream, cfg readerPumpConfig) (readerPump, error)
 	clock         clockwork.Clock
 	cfg           readerPumpConfig
 
-	ctx       context.Context
-	ctxCancel ictx.CancelErrFunc
-
-	backgrounds sync.WaitGroup
-
 	needReconnectSignal chan struct{}
 	batches             chan *Batch
 
-	m               locker.RWLocker
+	closeOnce sync.Once
+
+	m               xsync.RWMutex
 	connectionError error
 	pumpVal         readerPump
 }
@@ -71,6 +70,7 @@ func NewReader(connectCtx context.Context, connector ReaderStreamConnector, cons
 		},
 		needReconnectSignal: make(chan struct{}, 1),
 		cfg:                 readerPumpConfig{}, // TODO
+		batches:             make(chan *Batch),
 	}
 
 	res.start()
@@ -79,48 +79,44 @@ func NewReader(connectCtx context.Context, connector ReaderStreamConnector, cons
 }
 
 func (r *Reader) Close() error {
-	r.m.Lock()
-	defer r.m.Unlock()
+	r.closeOnce.Do(func() {
+		if r.pumpVal != nil {
+			r.pumpVal.Close(xerrors.WithStackTrace(errors.New("ydb: reader closed")))
+		}
 
-	err := xerrors.WithStackTrace(errReaderClosed)
-	r.ctxCancel(err)
+		_ = r.background.Close()
+	})
 
-	if r.pumpVal != nil {
-		r.pumpVal.Close(err)
-	}
-
-	r.connectionError = err
-	r.backgrounds.Wait()
 	return nil
 }
 
 func (r *Reader) start() {
-	r.backgrounds.Add(1)
-	go r.reconnectLoop()
+	r.background.Start(r.reconnectLoop)
 }
 
-func (r *Reader) reconnectLoop() {
-	defer r.backgrounds.Done()
-
-	doneChan := r.ctx.Done()
+func (r *Reader) reconnectLoop(ctx context.Context) {
 	for {
 		select {
-		case <-doneChan:
+		case <-ctx.Done():
 			return
 		case <-r.needReconnectSignal:
-			pump, err := r.reconnect()
+			pump, err := r.connectAndStartReceiveMessage(ctx)
 			r.m.WithLock(func() {
 				r.pumpVal, r.connectionError = pump, err
+				if err == nil {
+					// read duplicates
+					select {
+					case <-r.needReconnectSignal:
+					default:
+					}
+				}
 			})
 		}
 	}
 }
 
-func (r *Reader) reconnect() (readerPump, error) {
-	oldStream, _ := r.pump()
-	oldStream.Close(xerrors.WithStackTrace(errors.New("reader need reconnect")))
-
-	ctx, cancel := context.WithTimeout(r.ctx, reconnectDuration)
+func (r *Reader) connectAndStartReceiveMessage(ctx context.Context) (readerPump, error) {
+	ctx, cancel := context.WithTimeout(ctx, reconnectDuration)
 	defer cancel()
 
 	streamReader, err := r.connector.Connect(ctx)
@@ -132,7 +128,18 @@ func (r *Reader) reconnect() (readerPump, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.background.Start()
 	return pump, nil
+}
+
+func (r *Reader) pumpMessages(ctx context.Context, pump readerPump) {
+	for {
+		batch, err := pump.ReadMessageBatch(ctx)
+		if err != nil {
+			return
+		}
+		r.batches <- batch
+	}
 }
 
 func (r *Reader) fireReconnectOnRetryableError(err error) {
@@ -148,84 +155,33 @@ func (r *Reader) fireReconnectOnRetryableError(err error) {
 	}
 }
 
-func (r *Reader) pump() (readerPump, error) {
+func (r *Reader) pump() readerPump {
 	r.m.RLock()
 	defer r.m.RUnlock()
 
-	return r.pumpVal, r.connectionError
-}
-
-func (r *Reader) connectedPump(ctx context.Context) (readerPump, error) {
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-	if r.ctx.Err() != nil {
-		return nil, r.ctx.Err()
-	}
-
-	var res readerPump
-	r.m.WithLock(func() {
-		if r.connectionError == nil {
-			res = r.pumpVal
-		}
-	})
-	if res != nil {
-		return res, nil
-	}
-
-	// TODO: improve loop for work on events instead of timer
-	ticker := r.clock.NewTicker(streamPollingInterval)
-	for {
-		select {
-		case <-ticker.Chan():
-			r.m.WithLock(func() {
-				if r.connectionError == nil {
-					res = r.pumpVal
-				}
-			})
-			if res != nil {
-				return res, nil
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-r.ctx.Done():
-			return nil, r.ctx.Err()
-		}
-	}
+	return r.pumpVal
 }
 
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
-	var res *Batch
-	var err error
-
-	err = r.retryOnPump(ctx, func(ctx context.Context, pump readerPump) error {
-		res, err = pump.ReadMessageBatch(ctx)
-		return err
-	})
-
-	return res, err
-}
-
-func (r *Reader) retryOnPump(ctx context.Context, callback func(ctx context.Context, pump readerPump) error) error {
+forBatches:
 	for {
-		pump, err := r.connectedPump(ctx)
-		if err != nil {
-			return err
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 
-		err = callback(ctx, pump)
-		if err == nil {
-			return nil
-		}
+		select {
+		case batch := <-r.batches:
+			if batch.Context().Err() != nil {
+				continue forBatches
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
 
-		if xerrors.RetryableError(err) == nil {
-			return err
+		case <-r.background.Done():
+			return nil, xerrors.WithStackTrace(errReaderClosed)
 		}
-
-		r.fireReconnectOnRetryableError(err)
-		return err
 	}
 }
 
@@ -238,12 +194,10 @@ func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
 }
 
 func (r *Reader) CommitBatch(ctx context.Context, commitBatch CommitBatch) error {
-	stream, err := r.pump()
-	if err != nil {
-		return err
-	}
-
-	return stream.Commit(ctx, commitBatch)
+	stream := r.pump()
+	err := stream.Commit(ctx, commitBatch)
+	r.fireReconnectOnRetryableError(err)
+	return err
 }
 
 func (r *Reader) CommitMessages(ctx context.Context, messages ...Message) error {
