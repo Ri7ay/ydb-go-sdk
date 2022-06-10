@@ -10,16 +10,19 @@ import (
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"google.golang.org/grpc"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
 func TestInit(t *testing.T) {
+	// TODO
+	t.Skip()
+
 	ctx := context.Background()
 	db, err := ydb.Open(ctx, "grpc://localhost:2136?database=/local")
 	defer func() { _ = db.Close(ctx) }()
