@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
@@ -39,17 +38,14 @@ type topicStreamReader interface {
 }
 
 func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...readerOption) *Reader {
+	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
 	readerConnector := func(ctx context.Context) (topicStreamReader, error) {
 		stream, err := connector(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		// TODO
-		return newTopicStreamReader(stream, topicStreamReaderConfig{
-			BaseContext:        context.Background(),
-			CredUpdateInterval: time.Hour,
-		})
+		return newTopicStreamReader(stream, readerConfig)
 	}
 
 	res := &Reader{
@@ -144,6 +140,19 @@ func (r *Reader) messageReaderLoop(ctx context.Context) {
 	}
 }
 
-func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...readerOption) (topicStreamReaderConfig, error) {
-	panic("not implemented")
+func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...readerOption) (cfg topicStreamReaderConfig) {
+	cfg = newTopicStreamReaderConfig()
+	cfg.Consumer = consumer
+
+	// make own copy, for prevent changing internal states if readSelectors will change outside
+	cfg.ReadSelectors = make([]ReadSelector, len(readSelectors))
+	for i := range readSelectors {
+		cfg.ReadSelectors[i] = readSelectors[i].clone()
+	}
+
+	if len(opts) > 0 {
+		panic("not implemented")
+	}
+
+	return cfg
 }

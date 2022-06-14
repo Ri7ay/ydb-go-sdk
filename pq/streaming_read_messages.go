@@ -164,6 +164,15 @@ type ReadSelector struct {
 	SkipMessagesBefore time.Time
 }
 
+func (s ReadSelector) clone() ReadSelector {
+	dst := s
+
+	dst.Partitions = make([]int64, len(s.Partitions))
+	copy(dst.Partitions, s.Partitions)
+
+	return dst
+}
+
 type ReadPartitionData struct {
 	StreamID PartitionStreamID
 

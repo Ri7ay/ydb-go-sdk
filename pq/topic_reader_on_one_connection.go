@@ -42,7 +42,26 @@ type topicStreamReaderConfig struct {
 	ProtoBufferSize    int
 	Cred               credentials.Credentials
 	CredUpdateInterval time.Duration
-	InitRequest        pqstreamreader.InitRequest
+	Consumer           string
+	ReadSelectors      []ReadSelector
+}
+
+func (cfg *topicStreamReaderConfig) initMessage() pqstreamreader.ClientMessage {
+	//TODO improve
+	res := &pqstreamreader.InitRequest{
+		Consumer: cfg.Consumer,
+	}
+
+	res.TopicsReadSettings = make([]pqstreamreader.TopicReadSettings, len(cfg.ReadSelectors))
+	for i, selector := range cfg.ReadSelectors {
+		res.TopicsReadSettings[i] = pqstreamreader.TopicReadSettings{
+			Topic:            selector.Stream.String(),
+			PartitionsID:     selector.Partitions,
+			StartFromWritten: selector.SkipMessagesBefore,
+		}
+	}
+
+	return res
 }
 
 func newTopicStreamReaderConfig() topicStreamReaderConfig {
@@ -136,22 +155,7 @@ func (r *topicStreamReaderImpl) setStarted() error {
 }
 
 func (r *topicStreamReaderImpl) initSession() error {
-	mess := pqstreamreader.InitRequest{
-		TopicsReadSettings: []pqstreamreader.TopicReadSettings{
-			{
-				Topic: "/local/asd",
-			},
-		},
-		Consumer:           "test",
-		MaxLagDuration:     0,
-		StartFromWrittenAt: time.Time{},
-		SessionID:          "",
-		ConnectionAttempt:  0,
-		State:              pqstreamreader.State{},
-		IdleTimeoutMs:      0,
-	}
-
-	if err := r.stream.Send(&mess); err != nil {
+	if err := r.stream.Send(r.cfg.initMessage()); err != nil {
 		return err
 	}
 

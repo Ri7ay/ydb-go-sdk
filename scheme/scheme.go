@@ -21,6 +21,10 @@ type Client interface {
 // Path stores Entry paths in database
 type Path string
 
+func (p Path) String() string {
+	return string(p)
+}
+
 type EntryType uint
 
 type Directory struct {
