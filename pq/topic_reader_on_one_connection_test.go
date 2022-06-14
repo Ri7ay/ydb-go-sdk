@@ -19,11 +19,9 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
-func TestInit(t *testing.T) {
-	// TODO
-	t.Skip()
-
+func TestOneThreadLocalDB(t *testing.T) {
 	ctx := context.Background()
+	// TODO: Fix connection string to env
 	db, err := ydb.Open(ctx, "grpc://localhost:2136?database=/local")
 	defer func() { _ = db.Close(ctx) }()
 	require.NoError(t, err)

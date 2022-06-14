@@ -85,7 +85,7 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context) (*Batch, e
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-r.ctx.Done():
-		return nil, ctx.Err()
+		return nil, r.ctx.Err()
 	case batch := <-r.messageBatches:
 		r.freeBytes <- batch.sizeBytes
 		return batch, nil

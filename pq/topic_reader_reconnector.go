@@ -15,7 +15,7 @@ import (
 
 const (
 	// TODO: improve
-	reconnectDuration      = time.Second / 10
+	reconnectDuration      = time.Second * 60
 	streamPollingInterval  = time.Second / 10
 	forceReconnectInterval = time.Hour * 24 * 365 * 100 // never
 )
@@ -169,6 +169,7 @@ func (r *readerReconnector) readMessagesFromStreamLoop(ctx context.Context, pump
 
 	for {
 		batch, err := pump.ReadMessageBatch(ctx)
+		r.fireReconnectOnRetryableError(pump, err)
 		if err != nil {
 			return
 		}
@@ -209,10 +210,10 @@ func (r *readerReconnector) handlePanic() {
 	p := recover()
 
 	if p != nil {
-		r.Close(nil, xerrors.WithStackTrace(fmt.Errorf("handled panic: %v", p)))
+		r.Close(context.Background(), xerrors.WithStackTrace(fmt.Errorf("handled panic: %v", p)))
 	}
 }
 
 func isRetryableError(err error) bool {
-	return xerrors.RetryableError(err) != nil
+	return errors.Is(err, context.Canceled) || xerrors.RetryableError(err) != nil
 }

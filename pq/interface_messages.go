@@ -128,6 +128,7 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 	res.sizeBytes = sb.SizeBytes
 	res.WriteTimestamp = sb.WriteTimeStamp
 	res.Messages = make([]Message, len(sb.Messages))
+	res.partitionContext = batchContext
 
 	if len(sb.Messages) > 0 {
 		commitOffset := &res.CommitOffset

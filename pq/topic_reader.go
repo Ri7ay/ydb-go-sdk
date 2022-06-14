@@ -3,6 +3,7 @@ package pq
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -39,7 +40,10 @@ func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, co
 		}
 
 		// TODO
-		return newTopicStreamReader(stream, topicStreamReaderConfig{})
+		return newTopicStreamReader(stream, topicStreamReaderConfig{
+			BaseContext:        context.Background(),
+			CredUpdateInterval: time.Hour,
+		})
 	}
 
 	res := &Reader{
