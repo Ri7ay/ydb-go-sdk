@@ -79,6 +79,7 @@ forReadBatch:
 		if batch.Context().Err() != nil {
 			continue forReadBatch
 		}
+		return batch, nil
 	}
 }
 
