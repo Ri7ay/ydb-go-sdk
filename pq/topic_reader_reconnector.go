@@ -55,13 +55,9 @@ func (r *readerReconnector) ReadMessageBatch(ctx context.Context) (*Batch, error
 		return nil, ctx.Err()
 	}
 
-readBatches:
 	for {
 		select {
 		case batch := <-r.nextBatch:
-			if batch.Context().Err() != nil {
-				continue readBatches
-			}
 			return batch, nil
 
 		case <-ctx.Done():

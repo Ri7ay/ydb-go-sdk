@@ -3,8 +3,10 @@ package pq
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
@@ -23,7 +25,11 @@ type ReaderStream interface {
 type TopicSteamReaderConnect func(ctx context.Context) (ReaderStream, error)
 
 type Reader struct {
-	reader *readerReconnector
+	reader     *readerReconnector
+	oneMessage chan *Message
+
+	messageReaderLoopOnce sync.Once
+	background            backgroundworkers.BackgroundWorker
 }
 
 type topicStreamReader interface {
@@ -54,6 +60,7 @@ func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, co
 }
 
 func (r *Reader) Close() error {
+	r.background.Close(context.TODO())
 	r.reader.Close(nil, errReaderClosed)
 	return nil
 }
@@ -61,11 +68,43 @@ func (r *Reader) Close() error {
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
-	return r.reader.ReadMessageBatch(ctx)
+
+forReadBatch:
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		batch, err := r.reader.ReadMessageBatch(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if batch.Context().Err() != nil {
+			continue forReadBatch
+		}
+	}
 }
 
-func (r *Reader) ReadMessage(context.Context) (Message, error) {
-	panic("not implemented")
+func (r *Reader) ReadMessage(ctx context.Context) (*Message, error) {
+	r.messageReaderLoopOnce.Do(func() {
+		r.background.Start(r.messageReaderLoop)
+	})
+
+	ctxDone := ctx.Done()
+
+forReadMessage:
+	for {
+		select {
+		case mess := <-r.oneMessage:
+			if mess.Context().Err() != nil {
+				continue forReadMessage
+			}
+			return mess, nil
+		case <-ctxDone:
+			return nil, ctx.Err()
+		}
+	}
 }
 
 func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
@@ -78,4 +117,33 @@ func (r *Reader) CommitBatch(ctx context.Context, commitBatch CommitBatch) error
 
 func (r *Reader) CommitMessages(ctx context.Context, messages ...Message) error {
 	return r.CommitBatch(ctx, CommitBatchFromMessages(messages...))
+}
+
+func (r *Reader) messageReaderLoop(ctx context.Context) {
+	ctxDone := ctx.Done()
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		batch, err := r.ReadMessageBatch(ctx)
+		// TODO: log
+		if err != nil {
+			continue
+		}
+
+		for index := range batch.Messages {
+			select {
+			case r.oneMessage <- &batch.Messages[index]:
+				// pass
+			case <-ctxDone:
+				// stop work
+				return
+			}
+		}
+	}
+}
+
+func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...readerOption) (topicStreamReaderConfig, error) {
+	panic("not implemented")
 }
