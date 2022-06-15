@@ -24,7 +24,7 @@ type ReaderStream interface {
 type TopicSteamReaderConnect func(ctx context.Context) (ReaderStream, error)
 
 type Reader struct {
-	reader     *readerReconnector
+	reader     topicStreamReader
 	oneMessage chan *Message
 
 	messageReaderLoopOnce sync.Once
@@ -51,14 +51,19 @@ func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, co
 	res := &Reader{
 		reader: newReaderReconnector(connectCtx, readerConnector),
 	}
+	res.initChannels()
 
 	return res
 }
 
+func (r *Reader) initChannels() {
+	r.oneMessage = make(chan *Message)
+}
+
 func (r *Reader) Close() error {
-	r.background.Close(context.TODO())
+	err := r.background.Close(context.TODO())
 	r.reader.Close(nil, errReaderClosed)
-	return nil
+	return err
 }
 
 // ReadMessageBatch read batch of messages.
@@ -109,7 +114,7 @@ func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
 }
 
 func (r *Reader) CommitBatch(ctx context.Context, commitBatch CommitBatch) error {
-	panic("not implemented")
+	return r.reader.Commit(ctx, commitBatch)
 }
 
 func (r *Reader) CommitMessages(ctx context.Context, messages ...Message) error {

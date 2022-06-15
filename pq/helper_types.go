@@ -19,7 +19,7 @@ func CommitBatchFromMessages(messages ...Message) CommitBatch {
 }
 
 func CommitBatchFromCommitableByOffset(commitable ...CommitableByOffset) CommitBatch {
-	var res CommitBatch
+	res := make(CommitBatch, 0, len(commitable))
 	res.Append(commitable...)
 	return res
 }
