@@ -92,7 +92,9 @@ func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*to
 	return nil, err
 }
 
-func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context) (*Batch, error) {
+func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (*Batch, error) {
+	// TODO: handle opts
+
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -103,8 +105,10 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context) (*Batch, e
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+
 	case <-r.ctx.Done():
 		return nil, r.ctx.Err()
+
 	case batch := <-r.messageBatches:
 		r.freeBytes <- batch.sizeBytes
 		return batch, nil

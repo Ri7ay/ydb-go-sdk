@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -28,14 +29,14 @@ type readerReconnector struct {
 	readerConnect readerConnectFunc
 
 	reconnectFromBadStream chan topicStreamReader
-	nextBatch              chan *Batch
 
 	closeOnce sync.Once
 
-	m         xsync.RWMutex
-	streamVal topicStreamReader
-	streamErr error
-	closedErr error
+	m                          xsync.RWMutex
+	streamConnectionInProgress chan struct{} // opened if connection in progress, closed if connection established
+	streamVal                  topicStreamReader
+	streamErr                  error
+	closedErr                  error
 }
 
 func newReaderReconnector(connectCtx context.Context, connector readerConnectFunc) *readerReconnector {
@@ -50,27 +51,36 @@ func newReaderReconnector(connectCtx context.Context, connector readerConnectFun
 	return res
 }
 
-func (r *readerReconnector) ReadMessageBatch(ctx context.Context) (*Batch, error) {
+func (r *readerReconnector) ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (*Batch, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
 	for {
-		select {
-		case batch := <-r.nextBatch:
-			return batch, nil
-
-		case <-ctx.Done():
-			return nil, ctx.Err()
-
-		case <-r.background.Done():
-			return nil, r.closedErr
+		stream, err := r.stream(ctx)
+		switch {
+		case isRetryableError(err):
+			r.fireReconnectOnRetryableError(stream, err)
+			runtime.Gosched()
+			continue
+		case err != nil:
+			return nil, err
+		default:
+			// pass
 		}
+
+		res, err := stream.ReadMessageBatch(ctx, opts)
+		if isRetryableError(err) {
+			r.fireReconnectOnRetryableError(stream, err)
+			runtime.Gosched()
+			continue
+		}
+		return res, err
 	}
 }
 
 func (r *readerReconnector) Commit(ctx context.Context, offset CommitBatch) error {
-	stream, err := r.stream()
+	stream, err := r.stream(ctx)
 	if err != nil {
 		return err
 	}
@@ -95,7 +105,7 @@ func (r *readerReconnector) Close(ctx context.Context, err error) {
 }
 
 func (r *readerReconnector) start(ctx context.Context) {
-	r.background.Start(r.connectionLoop)
+	r.background.Start(r.reconnectionLoop)
 
 	// start first connection
 	go func() { r.reconnectFromBadStream <- nil }()
@@ -103,79 +113,60 @@ func (r *readerReconnector) start(ctx context.Context) {
 
 func (r *readerReconnector) initChannels() {
 	r.reconnectFromBadStream = make(chan topicStreamReader, 1)
-	r.nextBatch = make(chan *Batch)
+	r.streamConnectionInProgress = make(chan struct{})
+	close(r.streamConnectionInProgress) // no progress at start
 }
 
-func (r *readerReconnector) connectionLoop(ctx context.Context) {
+func (r *readerReconnector) reconnectionLoop(ctx context.Context) {
 	defer r.handlePanic()
 
-forConnect:
 	// TODO: add delay for repeats
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
-		case oldStream := <-r.reconnectFromBadStream:
-			if ctx.Err() != nil {
-				return
-			}
-
-			stream, _ := r.stream()
-			if oldStream != stream {
-				continue forConnect
-			}
-
-			if oldStream != nil {
-				oldStream.Close(ctx, xerrors.WithStackTrace(errors.New("ydb: reconnect to pq grpc stream")))
-			}
-
-			reconnectCtx, cancel := context.WithTimeout(ctx, reconnectDuration)
-			newStream, err := r.connectAndStartReceiveMessage(reconnectCtx)
-			cancel()
-
-			if isRetryableError(err) {
-				go func() {
-					// guarantee write reconnect signal to channel
-					r.reconnectFromBadStream <- newStream
-				}()
-			}
-
-			r.m.WithLock(func() {
-				r.streamVal, r.streamErr = newStream, err
-			})
+		case oldReader := <-r.reconnectFromBadStream:
+			r.reconnect(ctx, oldReader)
 		}
 	}
 }
 
-func (r *readerReconnector) connectAndStartReceiveMessage(ctx context.Context) (topicStreamReader, error) {
-	streamReader, err := r.readerConnect(ctx)
-	if err != nil {
-		return nil, err
+func (r *readerReconnector) reconnect(ctx context.Context, oldReader topicStreamReader) {
+	if ctx.Err() != nil {
+		return
 	}
 
-	r.background.Start(func(ctx context.Context) {
-		r.readMessagesFromStreamLoop(ctx, streamReader)
+	stream, _ := r.stream(ctx)
+	if oldReader != stream {
+		return
+	}
+
+	connectionInProgress := make(chan struct{})
+	defer close(connectionInProgress)
+
+	r.m.WithLock(func() {
+		r.streamConnectionInProgress = connectionInProgress
 	})
-	return streamReader, nil
-}
 
-func (r *readerReconnector) readMessagesFromStreamLoop(ctx context.Context, pump topicStreamReader) {
-	defer r.handlePanic()
-
-	for {
-		batch, err := pump.ReadMessageBatch(ctx)
-		r.fireReconnectOnRetryableError(pump, err)
-		if err != nil {
-			return
-		}
-		select {
-		case r.nextBatch <- batch:
-			// pass
-		case <-ctx.Done():
-			return
-		}
+	if oldReader != nil {
+		oldReader.Close(ctx, xerrors.WithStackTrace(errors.New("ydb: reconnect to pq grpc stream")))
 	}
+
+	reconnectCtx, cancel := context.WithTimeout(ctx, reconnectDuration)
+	newStream, err := r.readerConnect(reconnectCtx)
+	cancel()
+
+	if isRetryableError(err) {
+		go func() {
+			// guarantee write reconnect signal to channel
+			r.reconnectFromBadStream <- newStream
+		}()
+	}
+
+	r.m.WithLock(func() {
+		r.streamVal, r.streamErr = newStream, err
+	})
 }
 
 func (r *readerReconnector) fireReconnectOnRetryableError(stream topicStreamReader, err error) {
@@ -191,15 +182,34 @@ func (r *readerReconnector) fireReconnectOnRetryableError(stream topicStreamRead
 	}
 }
 
-func (r *readerReconnector) stream() (topicStreamReader, error) {
-	r.m.RLock()
-	defer r.m.RUnlock()
-
-	if r.closedErr != nil {
-		return nil, r.closedErr
+func (r *readerReconnector) stream(ctx context.Context) (topicStreamReader, error) {
+	var err error
+	var connectionChan chan struct{}
+	r.m.WithRLock(func() {
+		connectionChan = r.streamConnectionInProgress
+		if r.closedErr != nil {
+			err = r.closedErr
+			return
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	return r.streamVal, r.streamErr
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-r.background.Done():
+		return nil, r.closedErr
+	case <-connectionChan:
+		var reader topicStreamReader
+		r.m.WithRLock(func() {
+			reader = r.streamVal
+			err = r.streamErr
+		})
+		r.fireReconnectOnRetryableError(reader, err)
+		return reader, err
+	}
 }
 
 func (r *readerReconnector) handlePanic() {

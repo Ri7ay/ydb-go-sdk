@@ -17,36 +17,88 @@ var (
 )
 
 func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
-	t.Run("Read", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+	t.Run("Ok", func(t *testing.T) {
+		baseReader := &topicStreamReaderMock{}
+		opts := ReadMessageBatchOptions{maxMessages: 10}
+		batch := &Batch{
+			Messages: []Message{{WrittenAt: time.Date(2022, 06, 15, 17, 56, 0, 0, time.UTC)}},
+		}
+		baseReader.On("ReadMessageBatch", mock.Anything, opts).Once().Return(batch, nil)
 
-		cancelledCtx, cancelledCtxCancel := context.WithCancel(context.Background())
-		cancelledCtxCancel()
-
-		batch1 := &Batch{partitionContext: context.Background(), Messages: []Message{{WrittenAt: time.Date(2022, 6, 10, 21, 21, 0, 1, time.UTC)}}}
-		batch2 := &Batch{partitionContext: cancelledCtx, Messages: []Message{{WrittenAt: time.Date(2022, 6, 10, 21, 21, 0, 2, time.UTC)}}}
-		batch3 := &Batch{partitionContext: context.Background(), Messages: []Message{{WrittenAt: time.Date(2022, 6, 10, 21, 21, 0, 3, time.UTC)}}}
-
-		reconnector := &readerReconnector{}
-		reconnector.initChannels()
-
-		go func() {
-			reconnector.nextBatch <- batch1
-			reconnector.nextBatch <- batch2
-			reconnector.nextBatch <- batch3
-		}()
-
-		res, err := reconnector.ReadMessageBatch(ctx)
+		reader := &readerReconnector{
+			streamVal: baseReader,
+		}
+		reader.initChannels()
+		res, err := reader.ReadMessageBatch(context.Background(), opts)
 		require.NoError(t, err)
-		require.Equal(t, batch1, res)
+		require.Equal(t, batch, res)
+	})
 
-		res, err = reconnector.ReadMessageBatch(ctx)
+	t.Run("WithConnect", func(t *testing.T) {
+		baseReader := &topicStreamReaderMock{}
+		opts := ReadMessageBatchOptions{maxMessages: 10}
+		batch := &Batch{
+			Messages: []Message{{WrittenAt: time.Date(2022, 06, 15, 17, 56, 0, 0, time.UTC)}},
+		}
+		baseReader.On("ReadMessageBatch", mock.Anything, opts).Once().Return(batch, nil)
+
+		connectCalled := 0
+		reader := &readerReconnector{
+			readerConnect: func(ctx context.Context) (topicStreamReader, error) {
+				connectCalled++
+				if connectCalled > 1 {
+					return nil, errors.New("unexpected call test connect function")
+				}
+				return baseReader, nil
+			},
+			streamErr: errUnconnected,
+		}
+		reader.initChannels()
+		reader.background.Start(reader.reconnectionLoop)
+
+		res, err := reader.ReadMessageBatch(context.Background(), opts)
 		require.NoError(t, err)
-		require.Equal(t, batch3, res)
+		require.Equal(t, batch, res)
+	})
 
-		go func() { cancel() }()
-		_, err = reconnector.ReadMessageBatch(ctx)
-		require.ErrorIs(t, err, context.Canceled)
+	t.Run("WithReConnect", func(t *testing.T) {
+		opts := ReadMessageBatchOptions{maxMessages: 10}
+
+		baseReader1 := &topicStreamReaderMock{}
+		baseReader1.On("ReadMessageBatch", mock.Anything, opts).Return(nil, xerrors.Retryable(errors.New("test1")))
+		baseReader1.On("Close", mock.Anything, mock.Anything).Return()
+
+		baseReader2 := &topicStreamReaderMock{}
+		baseReader2.On("ReadMessageBatch", mock.Anything, opts).Return(nil, xerrors.Retryable(errors.New("test2")))
+		baseReader2.On("Close", mock.Anything, mock.Anything).Return()
+
+		baseReader3 := &topicStreamReaderMock{}
+		batch := &Batch{
+			Messages: []Message{{WrittenAt: time.Date(2022, 06, 15, 17, 56, 0, 0, time.UTC)}},
+		}
+		baseReader3.On("ReadMessageBatch", mock.Anything, opts).Once().Return(batch, nil)
+
+		readers := []topicStreamReader{
+			baseReader1, baseReader2, baseReader3,
+		}
+		connectCalled := 0
+		reader := &readerReconnector{
+			readerConnect: func(ctx context.Context) (topicStreamReader, error) {
+				connectCalled++
+				return readers[connectCalled-1], nil
+			},
+			streamErr: errUnconnected,
+		}
+		reader.initChannels()
+		reader.background.Start(reader.reconnectionLoop)
+
+		res, err := reader.ReadMessageBatch(context.Background(), opts)
+		require.NoError(t, err)
+		require.Equal(t, batch, res)
+
+		baseReader1.AssertExpectations(t)
+		baseReader2.AssertExpectations(t)
+		baseReader3.AssertExpectations(t)
 	})
 
 	t.Run("StartWithCancelledContext", func(t *testing.T) {
@@ -56,9 +108,8 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			reconnector := &readerReconnector{}
 			reconnector.initChannels()
-			go func() { reconnector.nextBatch <- &Batch{} }()
 
-			_, err := reconnector.ReadMessageBatch(cancelledCtx)
+			_, err := reconnector.ReadMessageBatch(cancelledCtx, ReadMessageBatchOptions{})
 			require.ErrorIs(t, err, context.Canceled)
 		}
 	})
@@ -71,7 +122,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			reconnector.Close(context.Background(), testErr)
 		}()
 
-		_, err := reconnector.ReadMessageBatch(context.Background())
+		_, err := reconnector.ReadMessageBatch(context.Background(), ReadMessageBatchOptions{})
 		require.ErrorIs(t, err, testErr)
 	})
 }
@@ -89,6 +140,7 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 			require.Equal(t, commitBatch, args.Get(1))
 		}).Return(nil)
 		reconnector := &readerReconnector{streamVal: stream}
+		reconnector.initChannels()
 		require.NoError(t, reconnector.Commit(ctx, commitBatch))
 	})
 	t.Run("StreamOkCommitErr", func(t *testing.T) {
@@ -99,57 +151,53 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 			require.Equal(t, commitBatch, args.Get(1))
 		}).Return(testErr)
 		reconnector := &readerReconnector{streamVal: stream}
+		reconnector.initChannels()
 		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
 	})
 	t.Run("StreamErr", func(t *testing.T) {
 		reconnector := &readerReconnector{streamErr: testErr}
+		reconnector.initChannels()
 		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
 	})
 	t.Run("CloseErr", func(t *testing.T) {
 		reconnector := &readerReconnector{closedErr: testErr}
+		reconnector.initChannels()
 		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
 	})
 	t.Run("StreamAndCloseErr", func(t *testing.T) {
 		reconnector := &readerReconnector{closedErr: testErr, streamErr: testErr2}
+		reconnector.initChannels()
 		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
 	})
 }
 
 func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 	t.Run("Reconnect", func(t *testing.T) {
-
-		newStream1ReadStarted := make(chan bool)
 		newStream1 := &topicStreamReaderMock{}
-		newStream1.On("Close", mock.Anything, mock.Anything).Once().Run(func(args mock.Arguments) {
-			require.Error(t, args.Error(1))
-		})
-		newStream1.On("ReadMessageBatch", mock.Anything).Once().Run(func(args mock.Arguments) {
-			close(newStream1ReadStarted)
-			<-args.Get(0).(context.Context).Done()
-		}).Return(nil, context.Canceled)
-
-		newStream2ReadStarted := make(chan bool)
+		newStream1.On("Close", mock.Anything, mock.Anything)
 		newStream2 := &topicStreamReaderMock{}
-		newStream2.On("Close", mock.Anything, mock.Anything).Once().Run(func(args mock.Arguments) {
-			require.Error(t, args.Error(1))
-		})
-		newStream2.On("ReadMessageBatch", mock.Anything).Once().Run(func(args mock.Arguments) {
-			close(newStream2ReadStarted)
-			<-args.Get(0).(context.Context).Done()
-		}).Return(nil, context.Canceled)
+		newStream2.On("Close", mock.Anything, mock.Anything)
 
 		reconnector := &readerReconnector{}
 		reconnector.initChannels()
 
+		stream1Ready := make(chan struct{})
+		stream2Ready := make(chan struct{})
 		reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
 			{
-				stream: newStream1,
+				callback: func(ctx context.Context) (topicStreamReader, error) {
+					close(stream1Ready)
+					return newStream1, nil
+				},
 			},
 			{
 				err: xerrors.Retryable(errors.New("test reconnect error")),
 			},
 			{
-				stream: newStream2,
+				callback: func(ctx context.Context) (topicStreamReader, error) {
+					close(stream2Ready)
+					return newStream2, nil
+				},
 			},
 			{
 				callback: func(ctx context.Context) (topicStreamReader, error) {
@@ -159,17 +207,17 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 			},
 		}...)
 
-		reconnector.background.Start(reconnector.connectionLoop)
+		reconnector.background.Start(reconnector.reconnectionLoop)
 		reconnector.reconnectFromBadStream <- nil
 
-		<-newStream1ReadStarted
+		<-stream1Ready
 
 		// skip bad (old) stream
 		reconnector.reconnectFromBadStream <- &topicStreamReaderMock{}
 
 		reconnector.reconnectFromBadStream <- newStream1
 
-		<-newStream2ReadStarted
+		<-stream2Ready
 
 		reconnector.Close(context.Background(), errReaderClosed)
 
@@ -181,7 +229,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		reconnector := &readerReconnector{}
-		reconnector.connectionLoop(ctx) // must return
+		reconnector.reconnectionLoop(ctx) // must return
 	})
 }
 
@@ -191,18 +239,17 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 	reconnector := &readerReconnector{}
 	reconnector.initChannels()
 
-	streamStartRead := make(chan bool)
 	stream := &topicStreamReaderMock{}
 	stream.On("Close", mock.Anything, mock.Anything).Once().Run(func(args mock.Arguments) {
 		require.Error(t, args.Error(1))
 	})
-	stream.On("ReadMessageBatch", mock.Anything).Once().Run(func(args mock.Arguments) {
-		close(streamStartRead)
-		<-args.Get(0).(context.Context).Done()
-	}).Return(nil, context.Canceled)
 
+	connectionRequested := make(chan struct{})
 	reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
-		{stream: stream},
+		{callback: func(ctx context.Context) (topicStreamReader, error) {
+			close(connectionRequested)
+			return stream, nil
+		}},
 		{callback: func(ctx context.Context) (topicStreamReader, error) {
 			t.Error()
 			return nil, errors.New("unexpected call")
@@ -211,7 +258,7 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 
 	reconnector.start(ctx)
 
-	<-streamStartRead
+	<-connectionRequested
 	reconnector.Close(ctx, nil)
 
 	stream.AssertExpectations(t)
@@ -292,8 +339,8 @@ type topicStreamReaderMock struct {
 	mock.Mock
 }
 
-func (t *topicStreamReaderMock) ReadMessageBatch(ctx context.Context) (batch *Batch, _ error) {
-	res := t.Called(ctx)
+func (t *topicStreamReaderMock) ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (batch *Batch, _ error) {
+	res := t.Called(ctx, opts)
 	if v := res.Get(0); v != nil {
 		batch = v.(*Batch)
 	}

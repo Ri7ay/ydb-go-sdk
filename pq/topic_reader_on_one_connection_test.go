@@ -33,7 +33,7 @@ func TestOneThreadLocalDB(t *testing.T) {
 
 	pump, err := pq.TestCreatePump(ctx, pqstreamreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
 	require.NoError(t, err)
-	batch, err := pump.ReadMessageBatch(ctx)
+	batch, err := pump.ReadMessageBatch(ctx, pq.ReadMessageBatchOptions{})
 	require.NoError(t, err)
 	for _, mess := range batch.Messages {
 		data, err := io.ReadAll(mess.Data)

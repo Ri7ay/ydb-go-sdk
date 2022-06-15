@@ -31,8 +31,11 @@ type Reader struct {
 	background            backgroundworkers.BackgroundWorker
 }
 
+type ReadMessageBatchOptions struct {
+	maxMessages int
+}
 type topicStreamReader interface {
-	ReadMessageBatch(ctx context.Context) (*Batch, error)
+	ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (*Batch, error)
 	Commit(ctx context.Context, offset CommitBatch) error
 	Close(ctx context.Context, err error)
 }
@@ -69,6 +72,10 @@ func (r *Reader) Close() error {
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
+	var readOptions ReadMessageBatchOptions
+	for _, optFunc := range opts {
+		optFunc(&readOptions)
+	}
 
 forReadBatch:
 	for {
@@ -76,7 +83,7 @@ forReadBatch:
 			return nil, err
 		}
 
-		batch, err := r.reader.ReadMessageBatch(ctx)
+		batch, err := r.reader.ReadMessageBatch(ctx, readOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -88,28 +95,22 @@ forReadBatch:
 	}
 }
 
-func (r *Reader) ReadMessage(ctx context.Context) (*Message, error) {
-	r.messageReaderLoopOnce.Do(func() {
-		r.background.Start(r.messageReaderLoop)
-	})
+// ReadBatchOption для различных пожеланий к батчу вроде WithMaxMessages(int)
+type ReadBatchOption func(options *ReadMessageBatchOptions)
 
-	ctxDone := ctx.Done()
-	backgroundDone := r.background.Done()
-
-forReadMessage:
-	for {
-		select {
-		case mess := <-r.oneMessage:
-			if mess.Context().Err() != nil {
-				continue forReadMessage
-			}
-			return mess, nil
-		case <-backgroundDone:
-			return nil, xerrors.WithStackTrace(errReaderClosed)
-		case <-ctxDone:
-			return nil, ctx.Err()
-		}
+func ReadMaxMessagesCount(count int) ReadBatchOption {
+	return func(options *ReadMessageBatchOptions) {
+		options.maxMessages = count
 	}
+}
+
+func (r *Reader) ReadMessage(ctx context.Context) (*Message, error) {
+	res, err := r.ReadMessageBatch(ctx, ReadMaxMessagesCount(1))
+	if err != nil {
+		return nil, err
+	}
+
+	return &res.Messages[0], nil
 }
 
 func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {

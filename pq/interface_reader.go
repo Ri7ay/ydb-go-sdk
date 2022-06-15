@@ -118,9 +118,6 @@ func (r *ReaderExample) CloseWithContext(ctx context.Context) {
 	panic("not implemented")
 }
 
-// ReadBatchOption для различных пожеланий к батчу вроде WithMaxMessages(int)
-type ReadBatchOption func()
-
 func (r *ReaderExample) ReadMessageBatch(context.Context, ...ReadBatchOption) (Batch, error) {
 	return Batch{}, nil
 }
