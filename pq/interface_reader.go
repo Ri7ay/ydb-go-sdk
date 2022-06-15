@@ -37,7 +37,7 @@ func WithBatchMaxCount(maxCount int) readerOption {
 	panic("not implemented")
 }
 
-func WithBatchMaxTimeLag(duration time.Duration) {
+func WithBatchMaxTimeLag(duration time.Duration) readerOption {
 	panic("not implemented")
 }
 
