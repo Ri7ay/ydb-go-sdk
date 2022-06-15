@@ -124,46 +124,6 @@ func (r *Reader) CommitMessages(ctx context.Context, messages ...*Message) error
 	return r.CommitBatch(ctx, CommitBatchFromMessages(messages...))
 }
 
-type OnStartPartitionRequest struct {
-	Session *PartitionSession
-}
-type OnStartPartitionResponse struct {
-	readOffset   pqstreamreader.Offset
-	commitOffset pqstreamreader.Offset
-
-	readOffsetUsed   bool
-	commitOffsetUsed bool
-}
-
-func (r *OnStartPartitionResponse) SetReadOffset(offset int64) {
-	r.readOffset.FromInt64(offset)
-	r.readOffsetUsed = true
-}
-func (r *OnStartPartitionResponse) SetCommitedOffset(offset int64) {
-	r.commitOffset.FromInt64(offset)
-	r.commitOffsetUsed = true
-}
-
-func (r *Reader) OnStartPartition(f func(ctx context.Context, req OnStartPartitionRequest) (res OnStartPartitionResponse, err error)) {
-	panic("not implemented")
-}
-
-type OnStopPartitionRequest struct {
-	Partition *PartitionSession
-}
-
-func (r *Reader) OnStopPartition(f func(ctx context.Context, req *OnStopPartitionRequest) error) {
-	panic("not implemented")
-}
-
-type OnCommitAcceptedRequest struct {
-	PartitionSession *PartitionSession // may be cancelled
-	ComittedOffset   int64
-}
-
-func (r *Reader) OnCommitAccepted(f func(req OnCommitAcceptedRequest)) {
-}
-
 func (r *Reader) messageReaderLoop(ctx context.Context) {
 	ctxDone := ctx.Done()
 	for {

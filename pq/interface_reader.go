@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backoff"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
 )
 
 type ReaderExample struct {
@@ -57,6 +58,47 @@ func WithSyncCommit(enabled bool) readerOption {
 }
 
 func WithReadSelector(readSelector ReadSelector) readerOption {
+	panic("not implemented")
+}
+
+type OnStartPartitionRequest struct {
+	Session *PartitionSession
+}
+type OnStartPartitionResponse struct {
+	readOffset   pqstreamreader.Offset
+	commitOffset pqstreamreader.Offset
+
+	readOffsetUsed   bool
+	commitOffsetUsed bool
+}
+
+func (r *OnStartPartitionResponse) SetReadOffset(offset int64) {
+	r.readOffset.FromInt64(offset)
+	r.readOffsetUsed = true
+}
+func (r *OnStartPartitionResponse) SetCommitedOffset(offset int64) {
+	r.commitOffset.FromInt64(offset)
+	r.commitOffsetUsed = true
+}
+
+func WithPartitionStartHandler(f func(ctx context.Context, req OnStartPartitionRequest) (res OnStartPartitionResponse, err error)) readerOption {
+	panic("not implemented")
+}
+
+type OnStopPartitionRequest struct {
+	Partition *PartitionSession
+}
+
+func WithPartitionStopHandler(f func(ctx context.Context, req *OnStopPartitionRequest) error) readerOption {
+	panic("not implemented")
+}
+
+type OnCommitAcceptedRequest struct {
+	PartitionSession *PartitionSession // may be cancelled
+	ComittedOffset   int64
+}
+
+func WithNotifyAcceptedCommit(f func(req OnCommitAcceptedRequest)) readerOption {
 	panic("not implemented")
 }
 

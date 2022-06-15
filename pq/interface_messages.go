@@ -71,10 +71,6 @@ func (s *PartitionSession) Context() context.Context {
 	return context.TODO()
 }
 
-func (s *PartitionSession) OnGracefulStop(f func(ctx context.Context, partition *PartitionSession) error) {
-	panic("not implemented")
-}
-
 type Message struct {
 	Stream           string
 	PartitionSession *PartitionSession
