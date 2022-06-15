@@ -34,6 +34,7 @@ type MessageData struct { // Данные для записи. Так же эм�
 }
 
 type PartitionSession struct {
+	Topic       string
 	ID          pqstreamreader.PartitionSessionID
 	PartitionID int64
 
@@ -66,16 +67,12 @@ func (s *PartitionSession) CommitedOffset() pqstreamreader.Offset {
 	return s.commitedOffset
 }
 
-func (s *PartitionSession) GracefulNotifier() <-chan struct{} {
-	return s.gracefulSignal
-}
-
 func (s *PartitionSession) Context() context.Context {
 	return context.TODO()
 }
 
-func (s *PartitionSession) GracefulContext() context.Context {
-	return context.TODO()
+func (s *PartitionSession) OnGracefulStop(f func(ctx context.Context, partition *PartitionSession) error) {
+	panic("not implemented")
 }
 
 type Message struct {
@@ -160,12 +157,8 @@ func (m Batch) Context() context.Context {
 	return m.partitionContext
 }
 
-// PartitionSessionGracefulShutdown return channel, that will close, whe SDK receive signal about graceful shutdown partition
-// channel may be closed never, for example if connection broken or server force shutdown partition
-// Close of the channel is signal mean about server will not send more messages in the session
-// User have some time to finish work with received messaged and commit it.
-func (m Batch) PartitionSessionGracefulShutdown() <-chan struct{} {
-	return m.partitionGracefulShutdownChannel
+func (m *Batch) PartitionSession() *PartitionSession {
+	panic("not implemented")
 }
 
 var (

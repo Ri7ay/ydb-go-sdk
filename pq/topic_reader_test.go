@@ -3,11 +3,13 @@ package pq
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 )
 
@@ -63,7 +65,7 @@ func TestReader_Close(t *testing.T) {
 	readerCommitMessagesState := newCallState()
 
 	go func() {
-		readerCommitState.err = reader.Commit(context.Background(), nil)
+		readerCommitState.err = reader.Commit(context.Background(), Message{})
 		close(readerCommitState.callCompleted)
 	}()
 
@@ -87,14 +89,83 @@ func TestReader_Close(t *testing.T) {
 		close(readerReadMessageBatchState.callCompleted)
 	}()
 
+	runtime.Gosched()
+
+	// check about no methods finished before close
 	for i := range allStates {
 		require.False(t, isCallCompleted(allStates[i]))
 	}
 	require.NoError(t, reader.Close())
 
+	// check about all methods stop work after close
 	for i := range allStates {
-		require.True(t, isCallCompleted(allStates[i]))
-		require.ErrorIs(t, allStates[i].err, testErr)
+		<-allStates[i].callCompleted
+		require.Error(t, allStates[i].err, i)
 	}
+}
 
+func TestReader_Commit(t *testing.T) {
+	baseReader := &topicStreamReaderMock{}
+	reader := &Reader{reader: baseReader}
+
+	expectedBatchOk := CommitBatch{{
+		Offset:   1,
+		ToOffset: 10,
+	}}
+	expectedBatchOk[0].partitionSessionID.FromInt64(10)
+	baseReader.On("Commit", mock.Anything, expectedBatchOk).Once().Return(nil)
+	require.NoError(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchOk[0]}))
+
+	expectedBatchErr := CommitBatch{{
+		Offset:   15,
+		ToOffset: 20,
+	}}
+	expectedBatchErr[0].partitionSessionID.FromInt64(30)
+	testErr := errors.New("test err")
+	baseReader.On("Commit", mock.Anything, expectedBatchErr).Once().Return(testErr)
+	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchErr[0]}), testErr)
+}
+
+func TestReader_CommitBatch(t *testing.T) {
+	baseReader := &topicStreamReaderMock{}
+	reader := &Reader{reader: baseReader}
+
+	expectedBatchOk := CommitBatch{{
+		Offset:   1,
+		ToOffset: 10,
+	}}
+	expectedBatchOk[0].partitionSessionID.FromInt64(10)
+	baseReader.On("Commit", mock.Anything, expectedBatchOk).Once().Return(nil)
+	require.NoError(t, reader.CommitBatch(context.Background(), expectedBatchOk))
+
+	expectedBatchErr := CommitBatch{{
+		Offset:   15,
+		ToOffset: 20,
+	}}
+	expectedBatchErr[0].partitionSessionID.FromInt64(30)
+	testErr := errors.New("test err")
+	baseReader.On("Commit", mock.Anything, expectedBatchErr).Once().Return(testErr)
+	require.ErrorIs(t, reader.CommitBatch(context.Background(), expectedBatchErr), testErr)
+}
+
+func TestReader_CommitMessages(t *testing.T) {
+	baseReader := &topicStreamReaderMock{}
+	reader := &Reader{reader: baseReader}
+
+	expectedBatchOk := CommitBatch{{
+		Offset:   1,
+		ToOffset: 10,
+	}}
+	expectedBatchOk[0].partitionSessionID.FromInt64(10)
+	baseReader.On("Commit", mock.Anything, expectedBatchOk).Once().Return(nil)
+	require.NoError(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchOk[0]}))
+
+	expectedBatchErr := CommitBatch{{
+		Offset:   15,
+		ToOffset: 20,
+	}}
+	expectedBatchErr[0].partitionSessionID.FromInt64(30)
+	testErr := errors.New("test err")
+	baseReader.On("Commit", mock.Anything, expectedBatchErr).Once().Return(testErr)
+	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchErr[0]}), testErr)
 }
