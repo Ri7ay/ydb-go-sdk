@@ -156,6 +156,14 @@ func (r *Reader) OnStopPartition(f func(ctx context.Context, req *OnStopPartitio
 	panic("not implemented")
 }
 
+type OnCommitAcceptedRequest struct {
+	PartitionSession *PartitionSession // may be cancelled
+	ComittedOffset   int64
+}
+
+func (r *Reader) OnCommitAccepted(f func(req OnCommitAcceptedRequest)) {
+}
+
 func (r *Reader) messageReaderLoop(ctx context.Context) {
 	ctxDone := ctx.Done()
 	for {
