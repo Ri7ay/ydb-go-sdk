@@ -7,31 +7,33 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 )
 
 func TestReader_Close(t *testing.T) {
+	mc := gomock.NewController(t)
+	defer mc.Finish()
+
 	testErr := errors.New("test error")
 	readerContext, readerCancel := context.WithCancel(context.Background())
-	baseReader := &topicStreamReaderMock{}
-	baseReader.On("ReadMessageBatch", mock.Anything, ReadMessageBatchOptions{}).Run(func(args mock.Arguments) {
+	baseReader := NewMocktopicStreamReader(mc)
+	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), ReadMessageBatchOptions{}).Do(func(_, _ interface{}) {
+		<-readerContext.Done()
+	}).Return(nil, testErr)
+	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), ReadMessageBatchOptions{maxMessages: 1}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 		return
 	}).Return(nil, testErr)
-	baseReader.On("ReadMessageBatch", mock.Anything, ReadMessageBatchOptions{maxMessages: 1}).Run(func(args mock.Arguments) {
-		<-readerContext.Done()
-		return
-	}).Return(nil, testErr)
-	baseReader.On("Commit", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+	baseReader.EXPECT().Commit(gomock.Any(), gomock.Any()).Times(3).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 		return
 	}).Return(testErr)
-	baseReader.On("Close", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+	baseReader.EXPECT().Close(gomock.Any(), gomock.Any()).Do(func(_, _ interface{}) {
 		readerCancel()
-	}).Return(nil)
+	})
 
 	reader := &Reader{
 		reader:                baseReader,
@@ -109,7 +111,10 @@ func TestReader_Close(t *testing.T) {
 }
 
 func TestReader_Commit(t *testing.T) {
-	baseReader := &topicStreamReaderMock{}
+	mc := gomock.NewController(t)
+	defer mc.Finish()
+
+	baseReader := NewMocktopicStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{{
@@ -117,7 +122,7 @@ func TestReader_Commit(t *testing.T) {
 		ToOffset: 10,
 	}}
 	expectedBatchOk[0].partitionSessionID.FromInt64(10)
-	baseReader.On("Commit", mock.Anything, expectedBatchOk).Once().Return(nil)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
 	require.NoError(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchOk[0]}))
 
 	expectedBatchErr := CommitBatch{{
@@ -126,12 +131,15 @@ func TestReader_Commit(t *testing.T) {
 	}}
 	expectedBatchErr[0].partitionSessionID.FromInt64(30)
 	testErr := errors.New("test err")
-	baseReader.On("Commit", mock.Anything, expectedBatchErr).Once().Return(testErr)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
 	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchErr[0]}), testErr)
 }
 
 func TestReader_CommitBatch(t *testing.T) {
-	baseReader := &topicStreamReaderMock{}
+	mc := gomock.NewController(t)
+	defer mc.Finish()
+
+	baseReader := NewMocktopicStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{{
@@ -139,7 +147,7 @@ func TestReader_CommitBatch(t *testing.T) {
 		ToOffset: 10,
 	}}
 	expectedBatchOk[0].partitionSessionID.FromInt64(10)
-	baseReader.On("Commit", mock.Anything, expectedBatchOk).Once().Return(nil)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
 	require.NoError(t, reader.CommitBatch(context.Background(), expectedBatchOk))
 
 	expectedBatchErr := CommitBatch{{
@@ -148,12 +156,15 @@ func TestReader_CommitBatch(t *testing.T) {
 	}}
 	expectedBatchErr[0].partitionSessionID.FromInt64(30)
 	testErr := errors.New("test err")
-	baseReader.On("Commit", mock.Anything, expectedBatchErr).Once().Return(testErr)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
 	require.ErrorIs(t, reader.CommitBatch(context.Background(), expectedBatchErr), testErr)
 }
 
 func TestReader_CommitMessages(t *testing.T) {
-	baseReader := &topicStreamReaderMock{}
+	mc := gomock.NewController(t)
+	defer mc.Finish()
+
+	baseReader := NewMocktopicStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{
@@ -168,7 +179,7 @@ func TestReader_CommitMessages(t *testing.T) {
 	}
 	expectedBatchOk[0].partitionSessionID.FromInt64(10)
 	expectedBatchOk[1].partitionSessionID.FromInt64(10)
-	baseReader.On("Commit", mock.Anything, expectedBatchOk).Once().Return(nil)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
 	require.NoError(t, reader.CommitMessages(context.Background(),
 		&Message{CommitOffset: expectedBatchOk[0]}, &Message{CommitOffset: expectedBatchOk[1]},
 	))
@@ -186,7 +197,7 @@ func TestReader_CommitMessages(t *testing.T) {
 	expectedBatchErr[0].partitionSessionID.FromInt64(30)
 	expectedBatchErr[1].partitionSessionID.FromInt64(30)
 	testErr := errors.New("test err")
-	baseReader.On("Commit", mock.Anything, expectedBatchErr).Once().Return(testErr)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
 	require.ErrorIs(t, reader.CommitMessages(context.Background(),
 		&Message{CommitOffset: expectedBatchErr[0]},
 		&Message{CommitOffset: expectedBatchErr[1]},

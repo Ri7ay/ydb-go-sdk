@@ -7,15 +7,12 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
-var (
-	_ topicStreamReader = &readerReconnector{} // check interface implementation
-)
+var _ topicStreamReader = &readerReconnector{} // check interface implementation
 
 func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 	t.Run("Ok", func(t *testing.T) {
@@ -26,7 +23,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		opts := ReadMessageBatchOptions{maxMessages: 10}
 		batch := &Batch{
-			Messages: []Message{{WrittenAt: time.Date(2022, 06, 15, 17, 56, 0, 0, time.UTC)}},
+			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
 
@@ -46,7 +43,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		baseReader := NewMocktopicStreamReader(mc)
 		opts := ReadMessageBatchOptions{maxMessages: 10}
 		batch := &Batch{
-			Messages: []Message{{WrittenAt: time.Date(2022, 06, 15, 17, 56, 0, 0, time.UTC)}},
+			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
 
@@ -85,7 +82,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		baseReader3 := NewMocktopicStreamReader(mc)
 		batch := &Batch{
-			Messages: []Message{{WrittenAt: time.Date(2022, 06, 15, 17, 56, 0, 0, time.UTC)}},
+			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader3.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
 
@@ -182,10 +179,13 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 
 func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 	t.Run("Reconnect", func(t *testing.T) {
-		newStream1 := &topicStreamReaderMock{}
-		newStream1.On("Close", mock.Anything, mock.Anything)
-		newStream2 := &topicStreamReaderMock{}
-		newStream2.On("Close", mock.Anything, mock.Anything)
+		mc := gomock.NewController(t)
+		defer mc.Finish()
+
+		newStream1 := NewMocktopicStreamReader(mc)
+		newStream1.EXPECT().Close(gomock.Any(), gomock.Any())
+		newStream2 := NewMocktopicStreamReader(mc)
+		newStream2.EXPECT().Close(gomock.Any(), gomock.Any())
 
 		reconnector := &readerReconnector{}
 		reconnector.initChannels()
@@ -222,16 +222,13 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		<-stream1Ready
 
 		// skip bad (old) stream
-		reconnector.reconnectFromBadStream <- &topicStreamReaderMock{}
+		reconnector.reconnectFromBadStream <- NewMocktopicStreamReader(mc)
 
 		reconnector.reconnectFromBadStream <- newStream1
 
 		<-stream2Ready
 
 		reconnector.Close(context.Background(), errReaderClosed)
-
-		newStream1.AssertExpectations(t)
-		newStream2.AssertExpectations(t)
 	})
 
 	t.Run("StartWithCancelledContext", func(t *testing.T) {
@@ -243,14 +240,17 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 }
 
 func TestTopicReaderReconnectorStart(t *testing.T) {
+	mc := gomock.NewController(t)
+	defer mc.Finish()
+
 	ctx := context.Background()
 
 	reconnector := &readerReconnector{}
 	reconnector.initChannels()
 
-	stream := &topicStreamReaderMock{}
-	stream.On("Close", mock.Anything, mock.Anything).Once().Run(func(args mock.Arguments) {
-		require.Error(t, args.Error(1))
+	stream := NewMocktopicStreamReader(mc)
+	stream.EXPECT().Close(gomock.Any(), gomock.Any()).Do(func(_ context.Context, err error) {
+		require.Error(t, err)
 	})
 
 	connectionRequested := make(chan struct{})
@@ -269,14 +269,14 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 
 	<-connectionRequested
 	reconnector.Close(ctx, nil)
-
-	stream.AssertExpectations(t)
 }
 
 func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 	t.Run("Ok", func(t *testing.T) {
+		mc := gomock.NewController(t)
 		reconnector := &readerReconnector{}
-		stream := &topicStreamReaderMock{}
+
+		stream := NewMocktopicStreamReader(mc)
 		reconnector.initChannels()
 
 		reconnector.fireReconnectOnRetryableError(stream, nil)
@@ -301,8 +301,11 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 	})
 
 	t.Run("SkipWriteOnFullChannel", func(t *testing.T) {
+		mc := gomock.NewController(t)
+		defer mc.Finish()
+
 		reconnector := &readerReconnector{}
-		stream := &topicStreamReaderMock{}
+		stream := NewMocktopicStreamReader(mc)
 		reconnector.initChannels()
 
 	fillChannel:
@@ -319,7 +322,6 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 		reconnector.fireReconnectOnRetryableError(stream, xerrors.Retryable(errors.New("test")))
 		res := <-reconnector.reconnectFromBadStream
 		require.Nil(t, res)
-
 	})
 }
 
@@ -342,25 +344,4 @@ func readerConnectFuncMock(answers ...readerConnectFuncAnswer) readerConnectFunc
 
 		return res.callback(ctx)
 	}
-}
-
-type topicStreamReaderMock struct {
-	mock.Mock
-}
-
-func (t *topicStreamReaderMock) ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (batch *Batch, _ error) {
-	res := t.Called(ctx, opts)
-	if v := res.Get(0); v != nil {
-		batch = v.(*Batch)
-	}
-	return batch, res.Error(1)
-}
-
-func (t *topicStreamReaderMock) Commit(ctx context.Context, offset CommitBatch) error {
-	res := t.Called(ctx, offset)
-	return res.Error(0)
-}
-
-func (t *topicStreamReaderMock) Close(ctx context.Context, err error) {
-	t.Called(ctx, err)
 }
