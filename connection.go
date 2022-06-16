@@ -16,6 +16,7 @@ import (
 	internalCoordination "github.com/ydb-platform/ydb-go-sdk/v3/internal/coordination"
 	coordinationConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/coordination/config"
 	discoveryConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/discovery/config"
+	intpq "github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq"
 	internalRatelimiter "github.com/ydb-platform/ydb-go-sdk/v3/internal/ratelimiter"
 	ratelimiterConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/ratelimiter/config"
 	internalScheme "github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme"
@@ -24,7 +25,6 @@ import (
 	scriptingConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting/config"
 	internalTable "github.com/ydb-platform/ydb-go-sdk/v3/internal/table"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
-	intpq "github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/log"
@@ -350,7 +350,7 @@ func (c *connection) Persqueue() pq.Client {
 		c.persqueue = intpq.New(c.balancer, c.persqueueOptions)
 	})
 	panic("not implemented")
-	//return c.persqueue
+	// return c.persqueue
 }
 
 // Open connects to database by DSN and return driver runtime holder
