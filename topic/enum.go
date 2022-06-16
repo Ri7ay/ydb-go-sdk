@@ -1,4 +1,4 @@
-package pq
+package topic
 
 // Codec for stream data encoding settings
 type Codec uint8

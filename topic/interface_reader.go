@@ -1,4 +1,4 @@
-package pq
+package topic
 
 import (
 	"context"
@@ -20,7 +20,6 @@ type ReaderConfig struct {
 		DestroyPartitionStream StopReadingHandler
 	}
 	// и прочие полезные опции вроде размера inflight ...
-
 }
 
 type readerOption func()
@@ -76,6 +75,7 @@ func (r *OnStartPartitionResponse) SetReadOffset(offset int64) {
 	r.readOffset.FromInt64(offset)
 	r.readOffsetUsed = true
 }
+
 func (r *OnStartPartitionResponse) SetCommitedOffset(offset int64) {
 	r.commitOffset.FromInt64(offset)
 	r.commitOffsetUsed = true

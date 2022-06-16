@@ -1,4 +1,4 @@
-package pq
+package topic
 
 import (
 	"context"
@@ -12,10 +12,13 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
-var errGracefulShutdownPartition = xerrors.Wrap(errors.New("graceful shutdown partition"))
-var errPartitionStopped = xerrors.Wrap(errors.New("partition stopped"))
+var (
+	errGracefulShutdownPartition = xerrors.Wrap(errors.New("graceful shutdown partition"))
+	errPartitionStopped          = xerrors.Wrap(errors.New("partition stopped"))
+)
 
 type partitionSessionID = pqstreamreader.PartitionSessionID
 
@@ -31,7 +34,7 @@ type topicStreamReaderImpl struct {
 	readResponsesParseSignal chan struct{}
 	messageBatches           chan *Batch
 
-	m             sync.RWMutex
+	m             xsync.RWMutex
 	err           error
 	started       bool
 	readResponses []*pqstreamreader.ReadResponse // use slice instead channel for guarantee read grpc stream without block
@@ -47,7 +50,7 @@ type topicStreamReaderConfig struct {
 }
 
 func (cfg *topicStreamReaderConfig) initMessage() pqstreamreader.ClientMessage {
-	//TODO improve
+	// TODO improve
 	res := &pqstreamreader.InitRequest{
 		Consumer: cfg.Consumer,
 	}
@@ -334,15 +337,14 @@ func (r *topicStreamReaderImpl) dataParse(mess *pqstreamreader.ReadResponse) {
 }
 
 func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
-	r.m.Lock()
-	defer r.m.Lock()
+	r.m.WithLock(func() {
+		if r.err != nil {
+			return
+		}
 
-	if r.err != nil {
-		return
-	}
-
-	r.err = err
-	r.cancel(err)
+		r.err = err
+		r.cancel(err)
+	})
 }
 
 func (r *topicStreamReaderImpl) onCommitResponse(mess *pqstreamreader.CommitOffsetResponse) error {
@@ -360,15 +362,14 @@ func (r *topicStreamReaderImpl) onCommitResponse(mess *pqstreamreader.CommitOffs
 }
 
 func (r *topicStreamReaderImpl) onReadResponse(mess *pqstreamreader.ReadResponse) {
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	r.readResponses = append(r.readResponses, mess)
-	select {
-	case r.readResponsesParseSignal <- struct{}{}:
-	default:
-		// no blocking
-	}
+	r.m.WithLock(func() {
+		r.readResponses = append(r.readResponses, mess)
+		select {
+		case r.readResponsesParseSignal <- struct{}{}:
+		default:
+			// no blocking
+		}
+	})
 }
 
 func (r *topicStreamReaderImpl) updateToken(ctx context.Context) error {
@@ -419,6 +420,7 @@ func (p *partitionSessionData) commitOffsetNotify(offset pqstreamreader.Offset, 
 	}
 	p.commitWaiters = newWaiters
 }
+
 func (p *partitionSessionData) nofityGraceful() {
 	p.gracefulCancel(errGracefulShutdownPartition)
 }
@@ -512,6 +514,7 @@ func (c *pumpSessionController) sessionDel(id partitionSessionID) (*partitionSes
 	}
 	return nil, xerrors.WithStackTrace(fmt.Errorf("delete undefined partition session: %v", id))
 }
+
 func (c *pumpSessionController) sessionModify(id partitionSessionID, callback func(p *partitionSessionData)) error {
 	c.m.Lock()
 	defer c.m.Unlock()
@@ -534,5 +537,9 @@ func TestCreatePump(ctx context.Context, stream ReaderStream, cred credentials.C
 	cfg := newTopicStreamReaderConfig()
 	cfg.BaseContext = ctx
 	cfg.Cred = cred
+	cfg.ReadSelectors = []ReadSelector{{
+		Stream: "/local/asd",
+	}}
+	cfg.Consumer = "test"
 	return newTopicStreamReader(stream, cfg)
 }

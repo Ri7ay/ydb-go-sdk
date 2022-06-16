@@ -1,11 +1,11 @@
 package blocks
 
 import (
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 
 type MessageIterator interface {
-	NextMessage() (data pq.EncodeReader, end bool)
+	NextMessage() (data topic.EncodeReader, end bool)
 }
 
 type BlockIteratot interface {

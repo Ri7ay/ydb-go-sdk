@@ -11,9 +11,9 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq/cluster"
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/cluster"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/config"
 )
 
 type Connector interface {

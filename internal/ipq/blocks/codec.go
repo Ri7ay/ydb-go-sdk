@@ -4,23 +4,23 @@ import (
 	"context"
 	"io"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 
 type Encoder interface {
-	Codec() pq.Codec
+	Codec() topic.Codec
 	Encode(context.Context, io.Reader, io.Writer) error
 }
 
 type Decode interface {
-	Codec() pq.Codec
+	Codec() topic.Codec
 	Decode(context.Context, io.Reader, io.Writer) error
 }
 
 type RawCodec struct{}
 
-func (RawCodec) Codec() pq.Codec {
-	return pq.CodecRaw
+func (RawCodec) Codec() topic.Codec {
+	return topic.CodecRaw
 }
 
 func (c RawCodec) Encode(ctx context.Context, r io.Reader, w io.Writer) error {

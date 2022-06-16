@@ -28,14 +28,14 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/log"
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
 	"github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scripting"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 
-	persqueueConfig "github.com/ydb-platform/ydb-go-sdk/v3/pq/config"
+	persqueueConfig "github.com/ydb-platform/ydb-go-sdk/v3/topic/config"
 )
 
 // Connection interface provide access to YDB service clients
@@ -73,7 +73,7 @@ type Connection interface {
 
 	// Scripting returns scripting client
 	Scripting() scripting.Client
-	Persqueue() pq.Client
+	Persqueue() topic.Client
 
 	// With makes child connection with the same options and another options
 	With(ctx context.Context, opts ...Option) (Connection, error)
@@ -345,7 +345,7 @@ func (c *connection) Scripting() scripting.Client {
 	return c.scripting
 }
 
-func (c *connection) Persqueue() pq.Client {
+func (c *connection) Persqueue() topic.Client {
 	c.persqueueOnce.Do(func() {
 		c.persqueue = intpq.New(c.balancer, c.persqueueOptions)
 	})

@@ -1,4 +1,4 @@
-package pq
+package topic
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func (r *Reader) initChannels() {
 
 func (r *Reader) Close() error {
 	err := r.background.Close(context.TODO())
-	r.reader.Close(nil, errReaderClosed)
+	r.reader.Close(context.TODO(), errReaderClosed)
 	return err
 }
 

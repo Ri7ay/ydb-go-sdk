@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/blocks"
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 
 func TestPerMessageEncode(t *testing.T) {
@@ -24,7 +24,7 @@ func TestPerMessageEncode(t *testing.T) {
 				Offset:           i + 1,
 				PartNumber:       0,
 				MessageCount:     1,
-				UncompressedSize: len(s), Codec: pq.CodecRaw,
+				UncompressedSize: len(s), Codec: topic.CodecRaw,
 			},
 			Data: *bytes.NewBuffer([]byte(s)),
 		})
@@ -51,9 +51,9 @@ func TestPerMessageEncode(t *testing.T) {
 	}
 }
 
-type msgSliceIter []pq.EncodeReader
+type msgSliceIter []topic.EncodeReader
 
-func (mi *msgSliceIter) NextMessage() (pq.EncodeReader, bool) {
+func (mi *msgSliceIter) NextMessage() (topic.EncodeReader, bool) {
 	slice := *mi
 	if len(slice) == 0 {
 		return nil, true

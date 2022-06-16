@@ -1,4 +1,4 @@
-package pq
+package topic
 
 import (
 	"bytes"
@@ -157,9 +157,7 @@ func (m *Batch) PartitionSession() *PartitionSession {
 	panic("not implemented")
 }
 
-var (
-	_ CommitableByOffset = Batch{}
-)
+var _ CommitableByOffset = Batch{}
 
 func createReader(codec pqstreamreader.Codec, rawBytes []byte) io.Reader {
 	switch codec {
@@ -179,7 +177,6 @@ func createReader(codec pqstreamreader.Codec, rawBytes []byte) io.Reader {
 	default:
 		return errorReader{err: xerrors.WithStackTrace(fmt.Errorf("received message with codec '%v': %w", codec, ErrUnexpectedCodec))}
 	}
-
 }
 
 type errorReader struct {

@@ -1,4 +1,4 @@
-package pq
+package topic
 
 type ReadStream interface {
 	Send(ReadSendMessage) error

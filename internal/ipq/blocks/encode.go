@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 
 type Block struct {
@@ -17,7 +17,7 @@ type Meta struct {
 	PartNumber       int
 	MessageCount     int
 	UncompressedSize int
-	Codec            pq.Codec
+	Codec            topic.Codec
 }
 
 var _ BlockIteratot = &BasicFormatBlockEncoder{}

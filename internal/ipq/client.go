@@ -13,13 +13,13 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/config"
 )
 
-//var _ persqueue.Client = &Client{}
+// var _ persqueue.Client = &Client{}
 
 type Client struct {
 	config  config.Config
@@ -47,7 +47,7 @@ func (c *Client) Close(_ context.Context) error {
 	return nil
 }
 
-func (c *Client) DescribeStream(ctx context.Context, stream scheme.Path) (info pq.StreamInfo, err error) {
+func (c *Client) DescribeStream(ctx context.Context, stream scheme.Path) (info topic.StreamInfo, err error) {
 	err = retry.Retry(ctx, func(ctx context.Context) (err error) {
 		info, err = c.describeStream(ctx, stream)
 		return xerrors.WithStackTrace(err)
@@ -62,7 +62,7 @@ func (c *Client) DropStream(ctx context.Context, stream scheme.Path) error {
 }
 
 func (c *Client) CreateStream(ctx context.Context, stream scheme.Path,
-	settings pq.StreamSettings, opts ...pq.StreamOption,
+	settings topic.StreamSettings, opts ...topic.StreamOption,
 ) error {
 	return retry.Retry(ctx, func(ctx context.Context) error {
 		return c.createStream(ctx, stream, settings, opts...)
@@ -70,27 +70,27 @@ func (c *Client) CreateStream(ctx context.Context, stream scheme.Path,
 }
 
 func (c *Client) AlterStream(ctx context.Context, stream scheme.Path,
-	settings pq.StreamSettings, opts ...pq.StreamOption,
+	settings topic.StreamSettings, opts ...topic.StreamOption,
 ) error {
 	return retry.Retry(ctx, func(ctx context.Context) error {
 		return c.alterStream(ctx, stream, settings, opts...)
 	})
 }
 
-func (c *Client) AddReadRule(ctx context.Context, stream scheme.Path, rule pq.ReadRule) error {
+func (c *Client) AddReadRule(ctx context.Context, stream scheme.Path, rule topic.ReadRule) error {
 	return retry.Retry(ctx, func(ctx context.Context) error {
 		return c.addReadRule(ctx, stream, rule)
 	})
 }
 
-func (c *Client) RemoveReadRule(ctx context.Context, stream scheme.Path, consumer pq.Consumer) error {
+func (c *Client) RemoveReadRule(ctx context.Context, stream scheme.Path, consumer topic.Consumer) error {
 	return retry.Retry(ctx, func(ctx context.Context) error {
 		return c.removeReadRule(ctx, stream, consumer)
 	})
 }
 
-func (c *Client) describeStream(ctx context.Context, stream scheme.Path) (pq.StreamInfo, error) {
-	var result pq.StreamInfo
+func (c *Client) describeStream(ctx context.Context, stream scheme.Path) (topic.StreamInfo, error) {
+	var result topic.StreamInfo
 
 	response, err := c.service.DescribeTopic(ctx,
 		&pqproto.DescribeTopicRequest{
@@ -110,7 +110,7 @@ func (c *Client) describeStream(ctx context.Context, stream scheme.Path) (pq.Str
 	result.Entry.From(opResult.Self)
 	result.StreamSettings.From(opResult.Settings)
 
-	result.ReadRules = make([]pq.ReadRule, len(opResult.Settings.ReadRules))
+	result.ReadRules = make([]topic.ReadRule, len(opResult.Settings.ReadRules))
 	for i := range result.ReadRules {
 		result.ReadRules[i].From(opResult.Settings.ReadRules[i])
 	}
@@ -130,7 +130,7 @@ func (c *Client) dropStream(ctx context.Context, stream scheme.Path) error {
 }
 
 func (c *Client) createStream(ctx context.Context, stream scheme.Path,
-	settings pq.StreamSettings, opts ...pq.StreamOption,
+	settings topic.StreamSettings, opts ...topic.StreamOption,
 ) error {
 	_, err := c.service.CreateTopic(ctx,
 		&pqproto.CreateTopicRequest{
@@ -143,7 +143,7 @@ func (c *Client) createStream(ctx context.Context, stream scheme.Path,
 }
 
 func (c *Client) alterStream(ctx context.Context, stream scheme.Path,
-	settings pq.StreamSettings, opts ...pq.StreamOption,
+	settings topic.StreamSettings, opts ...topic.StreamOption,
 ) error {
 	_, err := c.service.AlterTopic(ctx,
 		&pqproto.AlterTopicRequest{
@@ -155,7 +155,7 @@ func (c *Client) alterStream(ctx context.Context, stream scheme.Path,
 	return xerrors.WithStackTrace(err)
 }
 
-func (c *Client) addReadRule(ctx context.Context, stream scheme.Path, rule pq.ReadRule) error {
+func (c *Client) addReadRule(ctx context.Context, stream scheme.Path, rule topic.ReadRule) error {
 	_, err := c.service.AddReadRule(ctx,
 		&pqproto.AddReadRuleRequest{
 			Path:            c.streamToTopic(stream),
@@ -166,7 +166,7 @@ func (c *Client) addReadRule(ctx context.Context, stream scheme.Path, rule pq.Re
 	return xerrors.WithStackTrace(err)
 }
 
-func (c *Client) removeReadRule(ctx context.Context, stream scheme.Path, consumer pq.Consumer) error {
+func (c *Client) removeReadRule(ctx context.Context, stream scheme.Path, consumer topic.Consumer) error {
 	_, err := c.service.RemoveReadRule(ctx,
 		&pqproto.RemoveReadRuleRequest{
 			Path:            c.streamToTopic(stream),

@@ -5,7 +5,7 @@ import (
 
 	pqproto "github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 
 type streamOptions struct {
@@ -13,15 +13,15 @@ type streamOptions struct {
 	remoteMirror *pqproto.TopicSettings_RemoteMirrorRule
 }
 
-func (o *streamOptions) AddReadRule(r pq.ReadRule) {
+func (o *streamOptions) AddReadRule(r topic.ReadRule) {
 	o.readRules = append(o.readRules, encodeReadRule(r))
 }
 
-func (o *streamOptions) SetRemoteMirrorRule(r pq.RemoteMirrorRule) {
+func (o *streamOptions) SetRemoteMirrorRule(r topic.RemoteMirrorRule) {
 	o.remoteMirror = encodeRemoteMirrorRule(r)
 }
 
-func encodeTopicSettings(settings pq.StreamSettings, opts ...pq.StreamOption) *pqproto.TopicSettings {
+func encodeTopicSettings(settings topic.StreamSettings, opts ...topic.StreamOption) *pqproto.TopicSettings {
 	optValues := streamOptions{}
 	for _, o := range opts {
 		o(&optValues)
@@ -30,7 +30,7 @@ func encodeTopicSettings(settings pq.StreamSettings, opts ...pq.StreamOption) *p
 	// TODO: fix
 	return &pqproto.TopicSettings{
 		PartitionsCount: int32(settings.PartitionsCount),
-		//RetentionPeriodMs:                    settings.RetentionPeriod.Milliseconds(),
+		// RetentionPeriodMs:                    settings.RetentionPeriod.Milliseconds(),
 		MessageGroupSeqnoRetentionPeriodMs:   settings.MessageGroupSeqnoRetentionPeriod.Milliseconds(),
 		MaxPartitionMessageGroupsSeqnoStored: int64(settings.MaxPartitionMessageGroupsSeqnoStored),
 		SupportedFormat:                      encodeFormat(settings.SupportedFormat),
@@ -44,7 +44,7 @@ func encodeTopicSettings(settings pq.StreamSettings, opts ...pq.StreamOption) *p
 	}
 }
 
-func encodeReadRule(r pq.ReadRule) *pqproto.TopicSettings_ReadRule {
+func encodeReadRule(r topic.ReadRule) *pqproto.TopicSettings_ReadRule {
 	return &pqproto.TopicSettings_ReadRule{
 		ConsumerName:               string(r.Consumer),
 		Important:                  r.Important,
@@ -56,7 +56,7 @@ func encodeReadRule(r pq.ReadRule) *pqproto.TopicSettings_ReadRule {
 	}
 }
 
-func encodeRemoteMirrorRule(r pq.RemoteMirrorRule) *pqproto.TopicSettings_RemoteMirrorRule {
+func encodeRemoteMirrorRule(r topic.RemoteMirrorRule) *pqproto.TopicSettings_RemoteMirrorRule {
 	return &pqproto.TopicSettings_RemoteMirrorRule{
 		Endpoint:                   r.Endpoint,
 		TopicPath:                  string(r.SourceStream),
@@ -67,19 +67,19 @@ func encodeRemoteMirrorRule(r pq.RemoteMirrorRule) *pqproto.TopicSettings_Remote
 	}
 }
 
-func encodeCodecs(v []pq.Codec) []pqproto.Codec {
+func encodeCodecs(v []topic.Codec) []pqproto.Codec {
 	result := make([]pqproto.Codec, len(v))
 	for i := range result {
 		switch v[i] {
-		case pq.CodecUnspecified:
+		case topic.CodecUnspecified:
 			result[i] = pqproto.Codec_CODEC_UNSPECIFIED
-		case pq.CodecRaw:
+		case topic.CodecRaw:
 			result[i] = pqproto.Codec_CODEC_RAW
-		case pq.CodecGzip:
+		case topic.CodecGzip:
 			result[i] = pqproto.Codec_CODEC_GZIP
-		case pq.CodecLzop:
+		case topic.CodecLzop:
 			result[i] = pqproto.Codec_CODEC_LZOP
-		case pq.CodecZstd:
+		case topic.CodecZstd:
 			result[i] = pqproto.Codec_CODEC_ZSTD
 		default:
 			panic(fmt.Sprintf("unknown codec value %v", v))
@@ -88,23 +88,23 @@ func encodeCodecs(v []pq.Codec) []pqproto.Codec {
 	return result
 }
 
-func encodeFormat(v pq.Format) pqproto.TopicSettings_Format {
+func encodeFormat(v topic.Format) pqproto.TopicSettings_Format {
 	switch v {
-	case pq.FormatUnspecified:
+	case topic.FormatUnspecified:
 		return pqproto.TopicSettings_FORMAT_UNSPECIFIED
-	case pq.FormatBase:
+	case topic.FormatBase:
 		return pqproto.TopicSettings_FORMAT_BASE
 	default:
 		panic(fmt.Sprintf("unknown format value %v", v))
 	}
 }
 
-func encodeRemoteMirrorCredentials(v pq.RemoteMirrorCredentials) *pqproto.Credentials {
+func encodeRemoteMirrorCredentials(v topic.RemoteMirrorCredentials) *pqproto.Credentials {
 	if v == nil {
 		return nil
 	}
 	switch c := v.(type) {
-	case pq.IAMCredentials:
+	case topic.IAMCredentials:
 		return &pqproto.Credentials{
 			Credentials: &pqproto.Credentials_Iam_{
 				Iam: &pqproto.Credentials_Iam{
@@ -113,13 +113,13 @@ func encodeRemoteMirrorCredentials(v pq.RemoteMirrorCredentials) *pqproto.Creden
 				},
 			},
 		}
-	case pq.JWTCredentials:
+	case topic.JWTCredentials:
 		return &pqproto.Credentials{
 			Credentials: &pqproto.Credentials_JwtParams{
 				JwtParams: string(c),
 			},
 		}
-	case pq.OAuthTokenCredentials:
+	case topic.OAuthTokenCredentials:
 		return &pqproto.Credentials{
 			Credentials: &pqproto.Credentials_OauthToken{
 				OauthToken: string(c),
