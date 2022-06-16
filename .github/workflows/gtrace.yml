@@ -25,13 +25,16 @@ jobs:
       run: |
         go env
 
-    - name: Build
+    - name: Install generator tools
       run: |
         go install ./internal/cmd/gtrace
+        go install github.com/golang/mock/mockgen@v1.6.0
 
-    - name: Clean and re-generate *_gtrace.go files
+
+    - name: Clean and re-generate generated files
       run: |
-        cd ./trace && rm -f *_gtrace.go && go generate
+        rm -f ./trace/*_gtrace.go
+        go generate ./...
 
     - name: Check generation
       run: |
