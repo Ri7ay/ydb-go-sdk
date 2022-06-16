@@ -73,7 +73,7 @@ type Connection interface {
 
 	// Scripting returns scripting client
 	Scripting() scripting.Client
-	Persqueue() topic.Client
+	Topic() topic.Client
 
 	// With makes child connection with the same options and another options
 	With(ctx context.Context, opts ...Option) (Connection, error)
@@ -345,7 +345,7 @@ func (c *connection) Scripting() scripting.Client {
 	return c.scripting
 }
 
-func (c *connection) Persqueue() topic.Client {
+func (c *connection) Topic() topic.Client {
 	c.persqueueOnce.Do(func() {
 		c.persqueue = intpq.New(c.balancer, c.persqueueOptions)
 	})
