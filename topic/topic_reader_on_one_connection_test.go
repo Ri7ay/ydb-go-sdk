@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
@@ -41,7 +40,6 @@ func TestOneThreadLocalDB(t *testing.T) {
 		t.Log(string(data))
 	}
 	require.NoError(t, pump.Commit(ctx, topic.CommitBatch{batch.GetCommitOffset()}))
-	time.Sleep(time.Second)
 }
 
 func BenchmarkMassCommit(b *testing.B) {
