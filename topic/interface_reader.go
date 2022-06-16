@@ -71,7 +71,7 @@ type OnStartPartitionResponse struct {
 	commitOffsetUsed bool
 }
 
-func (r *OnStartPartitionResponse) SetReadOffset(offset int64) {
+func (r *OnStartPartitionResponse) StartReadFrom(offset int64) {
 	r.readOffset.FromInt64(offset)
 	r.readOffsetUsed = true
 }
