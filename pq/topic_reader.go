@@ -34,11 +34,6 @@ type Reader struct {
 type ReadMessageBatchOptions struct {
 	maxMessages int
 }
-type topicStreamReader interface {
-	ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (*Batch, error)
-	Commit(ctx context.Context, offset CommitBatch) error
-	Close(ctx context.Context, err error)
-}
 
 func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...readerOption) *Reader {
 	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
