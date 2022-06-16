@@ -2,28 +2,28 @@ package table
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
-	"sync"
 	"time"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/proto"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/balancer"
 
 	"github.com/ydb-platform/ydb-go-genproto/Ydb_Table_V1"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Table"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_TableStats"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/balancer"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/feature"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/operation"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/table/scanner"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/value"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/options"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result"
@@ -43,13 +43,13 @@ type session struct {
 	tableService Ydb_Table_V1.TableServiceClient
 	config       config.Config
 
-	closedMtx sync.RWMutex
+	closedMtx xsync.RWMutex
 	closed    bool
 
-	statusMtx sync.RWMutex
+	statusMtx xsync.RWMutex
 	status    options.SessionStatus
 
-	onCloseMtx sync.RWMutex
+	onCloseMtx xsync.RWMutex
 	onClose    []func(ctx context.Context)
 }
 
@@ -72,9 +72,9 @@ func (s *session) Status() string {
 }
 
 func (s *session) SetStatus(status options.SessionStatus) {
-	s.statusMtx.Lock()
-	s.status = status
-	s.statusMtx.Unlock()
+	s.statusMtx.WithLock(func() {
+		s.status = status
+	})
 }
 
 func (s *session) isClosed() bool {
@@ -145,19 +145,25 @@ func (s *session) OnClose(cb func(ctx context.Context)) {
 	if s.isClosed() {
 		return
 	}
+
 	s.onCloseMtx.Lock()
+	defer s.onCloseMtx.Unlock()
+
 	s.onClose = append(s.onClose, cb)
-	s.onCloseMtx.Unlock()
 }
 
 func (s *session) Close(ctx context.Context) (err error) {
-	s.closedMtx.Lock()
-	if s.closed {
-		s.closedMtx.Unlock()
+	var fastReturn bool
+	s.closedMtx.WithLock(func() {
+		if s.closed {
+			fastReturn = true
+		} else {
+			s.closed = true
+		}
+	})
+	if fastReturn {
 		return nil
 	}
-	s.closed = true
-	s.closedMtx.Unlock()
 
 	onDone := trace.TableOnSessionDelete(
 		s.config.Trace(),
@@ -170,11 +176,11 @@ func (s *session) Close(ctx context.Context) (err error) {
 
 	// call all close listeners before doing request
 	// firstly this need to clear Client from this session
-	s.onCloseMtx.RLock()
-	for _, cb := range s.onClose {
-		cb(ctx)
-	}
-	s.onCloseMtx.RUnlock()
+	s.onCloseMtx.WithRLock(func() {
+		for _, cb := range s.onClose {
+			cb(ctx)
+		}
+	})
 
 	_, err = s.tableService.DeleteSession(
 		balancer.WithEndpoint(ctx, s),
@@ -915,7 +921,7 @@ func (s *session) StreamReadTable(
 		opt((*options.ReadTableDesc)(&request))
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := xcontext.WithErrCancel(ctx)
 
 	stream, err = s.tableService.StreamReadTable(
 		balancer.WithEndpoint(ctx, s),
@@ -923,7 +929,7 @@ func (s *session) StreamReadTable(
 	)
 
 	if err != nil {
-		cancel()
+		cancel(xerrors.WithStackTrace(fmt.Errorf("ydb: stream read error: %w", err)))
 		return nil, xerrors.WithStackTrace(err)
 	}
 
@@ -950,7 +956,11 @@ func (s *session) StreamReadTable(
 			}
 		},
 		func(err error) error {
-			cancel()
+			if err == nil {
+				cancel(nil)
+			} else {
+				cancel(xerrors.WithStackTrace(fmt.Errorf("ydb: stream closed with: %w", err)))
+			}
 			onIntermediate(xerrors.HideEOF(err))(xerrors.HideEOF(err))
 			return err
 		},

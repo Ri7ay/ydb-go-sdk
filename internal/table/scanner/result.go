@@ -4,10 +4,11 @@ import (
 	"context"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_TableStats"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result"
@@ -17,7 +18,7 @@ import (
 type baseResult struct {
 	scanner
 
-	statsMtx sync.RWMutex
+	statsMtx xsync.RWMutex
 	stats    *Ydb_TableStats.QueryStats
 
 	closedMtx sync.RWMutex
@@ -131,9 +132,9 @@ func (r *streamResult) NextResultSetErr(ctx context.Context, columns ...string) 
 	}
 	r.Reset(s, columns...)
 	if stats != nil {
-		r.statsMtx.Lock()
-		r.stats = stats
-		r.statsMtx.Unlock()
+		r.statsMtx.WithLock(func() {
+			r.stats = stats
+		})
 	}
 	return ctx.Err()
 }
@@ -150,11 +151,14 @@ func (r *baseResult) CurrentResultSet() result.Set {
 // Stats returns query execution queryStats.
 func (r *baseResult) Stats() stats.QueryStats {
 	var s queryStats
-	r.statsMtx.RLock()
-	s.stats = r.stats
-	r.statsMtx.RUnlock()
-	s.processCPUTime = time.Microsecond * time.Duration(s.stats.GetProcessCpuTimeUs())
-	s.pos = 0
+	r.statsMtx.WithRLock(func() {
+		s.stats = r.stats
+	})
+
+	if s.stats == nil {
+		return nil
+	}
+
 	return &s
 }
 

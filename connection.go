@@ -8,8 +8,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	intpq "github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq"
-
 	"github.com/ydb-platform/ydb-go-sdk/v3/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/coordination"
 	"github.com/ydb-platform/ydb-go-sdk/v3/discovery"
@@ -26,7 +24,9 @@ import (
 	scriptingConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting/config"
 	internalTable "github.com/ydb-platform/ydb-go-sdk/v3/internal/table"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
+	intpq "github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/log"
 	"github.com/ydb-platform/ydb-go-sdk/v3/pq"
 	"github.com/ydb-platform/ydb-go-sdk/v3/ratelimiter"
@@ -118,7 +118,7 @@ type connection struct {
 	balancer balancer.Connection
 
 	children    map[uint64]Connection
-	childrenMtx sync.Mutex
+	childrenMtx xsync.Mutex
 	onClose     []func(c *connection)
 
 	panicCallback func(e interface{})
@@ -134,13 +134,13 @@ func (c *connection) Close(ctx context.Context) error {
 		}
 	}()
 
-	c.childrenMtx.Lock()
 	closers := make([]func(context.Context) error, 0)
-	for _, child := range c.children {
-		closers = append(closers, child.Close)
-	}
-	c.children = nil
-	c.childrenMtx.Unlock()
+	c.childrenMtx.WithLock(func() {
+		for _, child := range c.children {
+			closers = append(closers, child.Close)
+		}
+		c.children = nil
+	})
 
 	closers = append(
 		closers,

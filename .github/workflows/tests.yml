@@ -17,7 +17,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
@@ -51,14 +51,14 @@ jobs:
     env:
       OS: ${{ matrix.os }}
       GO: ${{ matrix.go-version }}
-      YDB_CONNECTION_STRING: grpcs://localhost:2135/?database=/local
+      YDB_CONNECTION_STRING: grpcs://localhost:2135/local
       YDB_SSL_ROOT_CERTIFICATES_FILE: /tmp/ydb_certs/ca.pem
       YDB_SHUTDOWN_URLS: http://localhost:8765/actors/kqp_proxy?force_shutdown=all
       HIDE_APPLICATION_OUTPUT: 1
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
@@ -94,12 +94,12 @@ jobs:
     env:
       OS: ${{ matrix.os }}
       GO: ${{ matrix.go-version }}
-      YDB_CONNECTION_STRING: grpcs://localhost:2135/?database=/local
+      YDB_CONNECTION_STRING: grpcs://localhost:2135/local
       YDB_SSL_ROOT_CERTIFICATES_FILE: /tmp/ydb_certs/ca.pem
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
@@ -136,12 +136,12 @@ jobs:
     env:
       OS: ${{ matrix.os }}
       GO: ${{ matrix.go-version }}
-      YDB_CONNECTION_STRING: grpcs://localhost:2135/?database=/local
+      YDB_CONNECTION_STRING: grpcs://localhost:2135/local
       YDB_SSL_ROOT_CERTIFICATES_FILE: /tmp/ydb_certs/ca.pem
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
@@ -177,12 +177,12 @@ jobs:
     env:
       OS: ${{ matrix.os }}
       GO: ${{ matrix.go-version }}
-      YDB_CONNECTION_STRING: grpcs://localhost:2135/?database=/local
+      YDB_CONNECTION_STRING: grpcs://localhost:2135/local
       YDB_SSL_ROOT_CERTIFICATES_FILE: /tmp/ydb_certs/ca.pem
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
@@ -218,12 +218,12 @@ jobs:
     env:
       OS: ${{ matrix.os }}
       GO: ${{ matrix.go-version }}
-      YDB_CONNECTION_STRING: grpcs://localhost:2135/?database=/local
+      YDB_CONNECTION_STRING: grpcs://localhost:2135/local
       YDB_SSL_ROOT_CERTIFICATES_FILE: /tmp/ydb_certs/ca.pem
     runs-on: ${{ matrix.os }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}
       - name: Checkout code
