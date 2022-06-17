@@ -14,7 +14,6 @@ type Batch struct {
 	CommitOffset // от всех сообщений батча
 
 	partitionSession *PartitionSession
-	partitionContext context.Context // один на все сообщения
 }
 
 func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
@@ -54,7 +53,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb rawtopicreader.Batch) Batch {
 	var res Batch
 	res.Messages = make([]Message, len(sb.MessageData))
-	res.partitionContext = batchContext
+	res.partitionSession = session
 
 	if len(sb.MessageData) > 0 {
 		commitOffset := &res.CommitOffset
@@ -69,7 +68,6 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 		cMess := &res.Messages[i]
 		cMess.Topic = stream
 		cMess.PartitionSession = session
-		cMess.ctx = batchContext
 
 		messData := &cMess.MessageData
 		messData.SeqNo = sMess.SeqNo
@@ -82,7 +80,7 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 }
 
 func (m Batch) Context() context.Context {
-	return m.partitionContext
+	return m.partitionSession.Context()
 }
 
 func (m Batch) PartitionSession() *PartitionSession {

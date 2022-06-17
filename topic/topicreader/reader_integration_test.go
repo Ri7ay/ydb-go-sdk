@@ -17,10 +17,25 @@ import (
 
 func TestReaderWithLocalDB(t *testing.T) {
 	ctx := context.Background()
+	db, reader := createDBReader(ctx, t)
+	defer func() {
+		_ = reader.Close()
+		_ = db.Close(ctx)
+	}()
 
+	mess, err := reader.ReadMessage(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, mess.CreatedAt)
+
+	batch, err := reader.ReadMessageBatch(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, batch.Messages)
+}
+
+func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicreader.Reader) {
 	// TODO: Fix connection string to env
 	db, err := ydb.Open(ctx, "grpc://localhost:2136?database=/local")
-	defer func() { _ = db.Close(ctx) }()
+
 	require.NoError(t, err)
 
 	var connector topicreader.TopicSteamReaderConnect = func(ctx context.Context) (topicreader.ReaderStream, error) {
@@ -29,16 +44,10 @@ func TestReaderWithLocalDB(t *testing.T) {
 		grpcStream, err := pqClient.StreamingRead(context.TODO())
 		return rawtopicreader.StreamReader{Stream: grpcStream}, err
 	}
-	reader := topicreader.NewReader(ctx, connector, "test", []topicreader.ReadSelector{
+
+	return db, topicreader.NewReader(ctx, connector, "test", []topicreader.ReadSelector{
 		{
 			Stream: "/local/asd",
 		},
 	})
-	defer func() {
-		_ = reader.Close()
-	}()
-
-	batch, err := reader.ReadMessageBatch(ctx)
-	require.NoError(t, err)
-	require.NotEmpty(t, batch.Messages)
 }

@@ -122,13 +122,13 @@ func ReadExplicitMessagesCount(count int) ReadBatchOption {
 	}
 }
 
-func (r *Reader) ReadMessage(ctx context.Context) (*Message, error) {
+func (r *Reader) ReadMessage(ctx context.Context) (Message, error) {
 	res, err := r.ReadMessageBatch(ctx, ReadExplicitMessagesCount(1))
 	if err != nil {
-		return nil, err
+		return Message{}, err
 	}
 
-	return &res.Messages[0], nil
+	return res.Messages[0], nil
 }
 
 func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {

@@ -81,8 +81,6 @@ type Message struct {
 	CommitOffset
 
 	WrittenAt time.Time
-
-	ctx context.Context // для отслеживания смерти assign
 }
 
 var (
@@ -94,6 +92,7 @@ type CommitOffset struct { // Кусочек, необходимый для ко
 	Offset   rawtopicreader.Offset
 	ToOffset rawtopicreader.Offset
 
+	// TODO: switch to partition session pointer
 	partitionSessionID rawtopicreader.PartitionSessionID
 }
 
@@ -102,7 +101,7 @@ func (c CommitOffset) GetCommitOffset() CommitOffset {
 }
 
 func (m Message) Context() context.Context {
-	return m.ctx
+	return m.PartitionSession.Context()
 }
 
 var _ CommitableByOffset = Batch{}
