@@ -71,14 +71,9 @@ type OnStartPartitionResponse struct {
 	commitOffsetUsed bool
 }
 
-func (r *OnStartPartitionResponse) StartReadFrom(offset int64) {
+func (r *OnStartPartitionResponse) StartWithAutoCommitFrom(offset int64) {
 	r.readOffset.FromInt64(offset)
 	r.readOffsetUsed = true
-}
-
-func (r *OnStartPartitionResponse) SetCommitedOffset(offset int64) {
-	r.commitOffset.FromInt64(offset)
-	r.commitOffsetUsed = true
 }
 
 func WithPartitionStartHandler(f func(ctx context.Context, req OnStartPartitionRequest) (res OnStartPartitionResponse, err error)) readerOption {
