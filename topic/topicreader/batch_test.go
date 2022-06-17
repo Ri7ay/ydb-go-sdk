@@ -10,12 +10,18 @@ import (
 func TestBatch_New(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		session := &PartitionSession{}
-		m1 := Message{WrittenAt: testTime(1)}.withCommitOffset(CommitOffset{Offset: 1, ToOffset: 2})
-		m2 := Message{WrittenAt: testTime(2)}.withCommitOffset(CommitOffset{Offset: 2, ToOffset: 3})
+		m1 := Message{
+			CommitOffset:     CommitOffset{Offset: 1, ToOffset: 2},
+			PartitionSession: session,
+		}
+		m2 := Message{
+			CommitOffset:     CommitOffset{Offset: 2, ToOffset: 3},
+			PartitionSession: session,
+		}
 		batch, err := newBatch(session, []Message{m1, m2})
 		require.NoError(t, err)
 
-		expected := &Batch{
+		expected := Batch{
 			Messages:         []Message{m1, m2},
 			CommitOffset:     CommitOffset{Offset: 1, ToOffset: 3},
 			partitionSession: session,

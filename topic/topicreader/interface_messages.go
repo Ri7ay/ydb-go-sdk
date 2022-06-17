@@ -85,11 +85,6 @@ type Message struct {
 	ctx context.Context // для отслеживания смерти assign
 }
 
-func (m Message) withCommitOffset(offsets CommitOffset) Message {
-	m.CommitOffset = offsets
-	return m
-}
-
 var (
 	_ CommitableByOffset = Message{}
 	_ CommitableByOffset = CommitOffset{}
