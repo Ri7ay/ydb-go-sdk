@@ -96,15 +96,11 @@ func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*to
 	return nil, err
 }
 
-func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (*Batch, error) {
+func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (Batch, error) {
 	ctx, cancel := xcontext.Merge(ctx, r.ctx)
 	defer cancel(errors.New("ydb: topic stream read message batch competed"))
 
-	batch, err := r.batcher.Get(ctx, opts.batcherGetOptions)
-	if err == nil {
-		return &batch, nil
-	}
-	return nil, err
+	return r.batcher.Get(ctx, opts.batcherGetOptions)
 }
 
 func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) error {

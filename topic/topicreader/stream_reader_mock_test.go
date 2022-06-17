@@ -60,10 +60,10 @@ func (mr *MockstreamReaderMockRecorder) Commit(ctx, offset interface{}) *gomock.
 }
 
 // ReadMessageBatch mocks base method.
-func (m *MockstreamReader) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (*Batch, error) {
+func (m *MockstreamReader) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (Batch, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadMessageBatch", ctx, opts)
-	ret0, _ := ret[0].(*Batch)
+	ret0, _ := ret[0].(Batch)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

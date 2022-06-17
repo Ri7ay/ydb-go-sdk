@@ -21,7 +21,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		baseReader := NewMockstreamReader(mc)
 
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
-		batch := &Batch{
+		batch := Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
@@ -41,7 +41,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		baseReader := NewMockstreamReader(mc)
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
-		batch := &Batch{
+		batch := Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
@@ -72,15 +72,15 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 
 		baseReader1 := NewMockstreamReader(mc)
-		baseReader1.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).Return(nil, xerrors.Retryable(errors.New("test1")))
+		baseReader1.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).Return(Batch{}, xerrors.Retryable(errors.New("test1")))
 		baseReader1.EXPECT().Close(gomock.Any(), gomock.Any()).Return()
 
 		baseReader2 := NewMockstreamReader(mc)
-		baseReader2.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(nil, xerrors.Retryable(errors.New("test2")))
+		baseReader2.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(Batch{}, xerrors.Retryable(errors.New("test2")))
 		baseReader2.EXPECT().Close(gomock.Any(), gomock.Any()).Return()
 
 		baseReader3 := NewMockstreamReader(mc)
-		batch := &Batch{
+		batch := Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader3.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)

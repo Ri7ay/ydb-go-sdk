@@ -72,7 +72,7 @@ func (r *Reader) Close() error {
 
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
-func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
+func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (Batch, error) {
 	readOptions := newReadMessageBatchOptions()
 
 	for _, optFunc := range opts {
@@ -82,12 +82,12 @@ func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) 
 forReadBatch:
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return Batch{}, err
 		}
 
 		batch, err := r.reader.ReadMessageBatch(ctx, readOptions)
 		if err != nil {
-			return nil, err
+			return Batch{}, err
 		}
 
 		if batch.Context().Err() != nil {

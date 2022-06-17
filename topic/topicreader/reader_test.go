@@ -21,11 +21,11 @@ func TestReader_Close(t *testing.T) {
 	baseReader := NewMockstreamReader(mc)
 	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), readMessageBatchOptions{}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
-	}).Return(nil, testErr)
+	}).Return(Batch{}, testErr)
 	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 1, MinCount: 1}}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 		return
-	}).Return(nil, testErr)
+	}).Return(Batch{}, testErr)
 	baseReader.EXPECT().Commit(gomock.Any(), gomock.Any()).Times(3).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 		return
