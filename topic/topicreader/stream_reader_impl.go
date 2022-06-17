@@ -35,10 +35,9 @@ type topicStreamReaderImpl struct {
 	readResponsesParseSignal chan struct{}
 	batcher                  *batcher
 
-	m             xsync.RWMutex
-	err           error
-	started       bool
-	readResponses []*rawtopicreader.ReadResponse // use slice instead channel for guarantee read grpc stream without block
+	m       xsync.RWMutex
+	err     error
+	started bool
 }
 
 type topicStreamReaderConfig struct {
@@ -129,7 +128,6 @@ func (r *topicStreamReaderImpl) start() error {
 
 	go r.readMessagesLoop()
 	go r.dataRequestLoop()
-	go r.dataParseLoop()
 	go r.updateTokenLoop()
 	return nil
 }
@@ -239,30 +237,6 @@ func (r *topicStreamReaderImpl) dataRequestLoop() {
 	}
 }
 
-func (r *topicStreamReaderImpl) dataParseLoop() {
-	for {
-		select {
-		case <-r.ctx.Done():
-			r.Close(nil, r.ctx.Err())
-			return
-
-		case <-r.readResponsesParseSignal:
-			// start work
-		}
-
-	consumeReadResponseBuffer:
-		for {
-			resp := r.getFirstReadResponse()
-			if resp == nil {
-				// buffer is empty, need wait new message
-				break consumeReadResponseBuffer
-			} else {
-				r.readResponse(resp)
-			}
-		}
-	}
-}
-
 func (r *topicStreamReaderImpl) updateTokenLoop() {
 	ticker := time.NewTicker(r.cfg.CredUpdateInterval)
 	defer ticker.Stop()
@@ -283,21 +257,7 @@ func (r *topicStreamReaderImpl) updateTokenLoop() {
 	}
 }
 
-func (r *topicStreamReaderImpl) getFirstReadResponse() (res *rawtopicreader.ReadResponse) {
-	r.m.Lock()
-	defer r.m.Unlock()
-
-	if len(r.readResponses) > 0 {
-		res = r.readResponses[0]
-
-		copy(r.readResponses, r.readResponses[1:])
-		r.readResponses = r.readResponses[:len(r.readResponses)-1]
-	}
-
-	return res
-}
-
-func (r *topicStreamReaderImpl) readResponse(mess *rawtopicreader.ReadResponse) {
+func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse) {
 	batchesCount := 0
 	for i := range mess.PartitionData {
 		batchesCount += len(mess.PartitionData[i].Batches)
@@ -347,17 +307,6 @@ func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffs
 	}
 
 	return nil
-}
-
-func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse) {
-	r.m.WithLock(func() {
-		r.readResponses = append(r.readResponses, mess)
-		select {
-		case r.readResponsesParseSignal <- struct{}{}:
-		default:
-			// no blocking
-		}
-	})
 }
 
 func (r *topicStreamReaderImpl) updateToken(ctx context.Context) error {
