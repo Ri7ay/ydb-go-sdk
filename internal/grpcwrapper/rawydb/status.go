@@ -1,0 +1,18 @@
+package rawydb
+
+import "github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
+
+type StatusCode int
+
+const (
+	StatusSuccess = StatusCode(Ydb.StatusIds_SUCCESS)
+)
+
+func (s *StatusCode) FromProto(p Ydb.StatusIds_StatusCode) error {
+	*s = StatusCode(p)
+	return nil
+}
+
+func (s StatusCode) IsSuccess() bool {
+	return s == StatusSuccess
+}

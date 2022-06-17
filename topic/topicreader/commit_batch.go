@@ -3,7 +3,7 @@ package topicreader
 import (
 	"sort"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
 type CommitableByOffset interface { // Интерфейс, который можно коммитить по оффсету
@@ -36,7 +36,7 @@ func (b *CommitBatch) AppendMessages(messages ...*Message) {
 	}
 }
 
-func (b CommitBatch) toPartitionsOffsets() []pqstreamreader.PartitionCommitOffset {
+func (b CommitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffset {
 	if len(b) == 0 {
 		return nil
 	}
@@ -81,24 +81,24 @@ func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
 	return newCommits
 }
 
-func commitsToPartitions(commits []CommitOffset) []pqstreamreader.PartitionCommitOffset {
+func commitsToPartitions(commits []CommitOffset) []rawtopicreader.PartitionCommitOffset {
 	if len(commits) == 0 {
 		return nil
 	}
 
-	newPartition := func(id pqstreamreader.PartitionSessionID) pqstreamreader.PartitionCommitOffset {
-		return pqstreamreader.PartitionCommitOffset{
+	newPartition := func(id rawtopicreader.PartitionSessionID) rawtopicreader.PartitionCommitOffset {
+		return rawtopicreader.PartitionCommitOffset{
 			PartitionSessionID: id,
 		}
 	}
 
-	partitionOffsets := make([]pqstreamreader.PartitionCommitOffset, 0, len(commits))
+	partitionOffsets := make([]rawtopicreader.PartitionCommitOffset, 0, len(commits))
 	partitionOffsets = append(partitionOffsets, newPartition(commits[0].partitionSessionID))
 	partition := &partitionOffsets[0]
 
 	for i := range commits {
 		commit := &commits[i]
-		offsetsRange := pqstreamreader.OffsetRange{
+		offsetsRange := rawtopicreader.OffsetRange{
 			Start: commit.Offset,
 			End:   commit.ToOffset,
 		}

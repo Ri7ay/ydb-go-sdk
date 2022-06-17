@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backoff"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
@@ -52,8 +52,8 @@ type GetPartitionStartOffsetRequest struct {
 	PartitionID int64
 }
 type GetPartitionStartOffsetResponse struct {
-	readOffset   pqstreamreader.Offset
-	commitOffset pqstreamreader.Offset
+	readOffset   rawtopicreader.Offset
+	commitOffset rawtopicreader.Offset
 
 	readOffsetUsed   bool
 	commitOffsetUsed bool

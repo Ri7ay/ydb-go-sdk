@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -35,7 +35,7 @@ type MessageData struct { // Данные для записи. Так же эм�
 
 type PartitionSession struct {
 	Topic       string
-	ID          pqstreamreader.PartitionSessionID
+	ID          rawtopicreader.PartitionSessionID
 	PartitionID int64
 
 	ctx context.Context
@@ -43,10 +43,10 @@ type PartitionSession struct {
 	m              sync.Mutex
 	gracefulled    bool
 	gracefulSignal chan struct{}
-	commitedOffset pqstreamreader.Offset
+	commitedOffset rawtopicreader.Offset
 }
 
-func (s *PartitionSession) graceful(offset pqstreamreader.Offset) error {
+func (s *PartitionSession) graceful(offset rawtopicreader.Offset) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -60,7 +60,7 @@ func (s *PartitionSession) graceful(offset pqstreamreader.Offset) error {
 	return nil
 }
 
-func (s *PartitionSession) CommitedOffset() pqstreamreader.Offset {
+func (s *PartitionSession) CommitedOffset() rawtopicreader.Offset {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -89,10 +89,10 @@ var (
 )
 
 type CommitOffset struct { // Кусочек, необходимый для коммита сообщения
-	Offset   pqstreamreader.Offset
-	ToOffset pqstreamreader.Offset
+	Offset   rawtopicreader.Offset
+	ToOffset rawtopicreader.Offset
 
-	partitionSessionID pqstreamreader.PartitionSessionID
+	partitionSessionID rawtopicreader.PartitionSessionID
 }
 
 func (c CommitOffset) GetCommitOffset() CommitOffset {
@@ -114,7 +114,7 @@ type Batch struct {
 	partitionGracefulShutdownChannel <-chan struct{}
 }
 
-func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb pqstreamreader.Batch) *Batch {
+func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb rawtopicreader.Batch) *Batch {
 	var res Batch
 	res.sizeBytes = sb.SizeBytes
 	res.WriteTimestamp = sb.WriteTimeStamp
@@ -156,11 +156,11 @@ func (m *Batch) PartitionSession() *PartitionSession {
 
 var _ CommitableByOffset = Batch{}
 
-func createReader(codec pqstreamreader.Codec, rawBytes []byte) io.Reader {
+func createReader(codec rawtopicreader.Codec, rawBytes []byte) io.Reader {
 	switch codec {
-	case pqstreamreader.CodecRaw:
+	case rawtopicreader.CodecRaw:
 		return bytes.NewReader(rawBytes)
-	case pqstreamreader.CodecGzip:
+	case rawtopicreader.CodecGzip:
 		gzipReader, err := gzip.NewReader(bytes.NewReader(rawBytes))
 		if err != nil {
 			return errorReader{err: xerrors.WithStackTrace(fmt.Errorf("failed read gzip message: %w", err))}

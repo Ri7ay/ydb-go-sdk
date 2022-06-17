@@ -1,24 +1,19 @@
-package pqstreamreader
+package rawtopicreader
 
 import (
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
-type Codec int
-
-func (c *Codec) fromProto(codec Ydb_PersQueue_V1.Codec) {
-	*c = Codec(codec)
-}
-
-const (
-	CodecAuto Codec = -1
+type (
+	SupportedCodecs []Codec
+	Codec           int
 )
 
 const (
@@ -26,6 +21,19 @@ const (
 	CodecRaw         Codec = 1
 	CodecGzip        Codec = 2
 )
+
+const (
+	CodecCustomerFirst = 10000
+	CodecCustomerLast  = 19999
+)
+
+func (c Codec) IsCustomerCodec() bool {
+	return c >= CodecCustomerFirst && c <= CodecCustomerLast
+}
+
+func (c *Codec) fromProto(codec Ydb_PersQueue_V1.Codec) {
+	*c = Codec(codec)
+}
 
 type PartitionSessionID struct {
 	v int64
@@ -51,20 +59,6 @@ func (offset *Offset) FromInt64(v int64) {
 
 func (offset Offset) ToInt64() int64 {
 	return int64(offset)
-}
-
-// StatusCode value may be any value from grpc proto, not enumerated here only
-type StatusCode int
-
-const (
-	StatusSuccess = StatusCode(Ydb.StatusIds_SUCCESS)
-)
-
-func (s *StatusCode) fromProto(p Ydb.StatusIds_StatusCode) {
-	*s = StatusCode(p)
-}
-func (s StatusCode) IsSuccess() bool {
-	return s == StatusSuccess
 }
 
 type StreamReader struct {
@@ -164,12 +158,12 @@ type clientMessageImpl struct{}
 func (*clientMessageImpl) isClientMessage() {}
 
 type ServerMessageMetadata struct {
-	Status StatusCode
+	Status rawydb.StatusCode
 	Issues []YdbIssueMessage
 }
 
 func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage) {
-	m.Status.fromProto(p.Status)
+	m.Status.FromProto(p.Status)
 	// TODO
 }
 
@@ -177,16 +171,14 @@ func (s ServerMessageMetadata) StatusData() ServerMessageMetadata {
 	return s
 }
 
-type YdbIssueMessage struct {
-}
+type YdbIssueMessage struct{}
 
 type ServerMessage interface {
 	isServerMessage()
 	StatusData() ServerMessageMetadata
 }
 
-type serverMessageImpl struct {
-}
+type serverMessageImpl struct{}
 
 func (*serverMessageImpl) isServerMessage() {}
 
@@ -333,8 +325,7 @@ type PartitionSessionState struct {
 	Status int // TODO: Enum from pb
 }
 
-type State struct {
-}
+type State struct{}
 
 type InitResponse struct {
 	serverMessageImpl

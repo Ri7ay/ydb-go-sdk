@@ -7,12 +7,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 	"google.golang.org/grpc"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
@@ -29,7 +28,7 @@ func TestOneThreadLocalDB(t *testing.T) {
 	grpcStream, err := pqClient.StreamingRead(ctx)
 	require.NoError(t, err)
 
-	pump, err := topicreader.TestCreatePump(ctx, pqstreamreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
+	pump, err := topicreader.TestCreatePump(ctx, rawtopicreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
 	require.NoError(t, err)
 	batch, err := pump.ReadMessageBatch(ctx, topicreader.ReadMessageBatchOptions{})
 	require.NoError(t, err)

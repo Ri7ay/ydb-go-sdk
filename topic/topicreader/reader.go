@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 )
@@ -18,8 +18,8 @@ var (
 )
 
 type ReaderStream interface {
-	Recv() (pqstreamreader.ServerMessage, error)
-	Send(mess pqstreamreader.ClientMessage) error
+	Recv() (rawtopicreader.ServerMessage, error)
+	Send(mess rawtopicreader.ClientMessage) error
 	Close() error
 }
 

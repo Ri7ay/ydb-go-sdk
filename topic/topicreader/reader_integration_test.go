@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 	"google.golang.org/grpc"
 )
@@ -27,7 +27,7 @@ func TestReaderWithLocalDB(t *testing.T) {
 		grpcConn := db.(grpc.ClientConnInterface)
 		pqClient := Ydb_PersQueue_V12.NewPersQueueServiceClient(grpcConn)
 		grpcStream, err := pqClient.StreamingRead(context.TODO())
-		return pqstreamreader.StreamReader{Stream: grpcStream}, err
+		return rawtopicreader.StreamReader{Stream: grpcStream}, err
 	}
 	reader := topicreader.NewReader(ctx, connector, "test", []topicreader.ReadSelector{
 		{
