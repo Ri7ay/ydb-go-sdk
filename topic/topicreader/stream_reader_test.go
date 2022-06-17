@@ -1,4 +1,4 @@
-package topic_test
+package topicreader_test
 
 import (
 	"context"
@@ -7,9 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 	"google.golang.org/grpc"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
 
@@ -30,20 +29,20 @@ func TestOneThreadLocalDB(t *testing.T) {
 	grpcStream, err := pqClient.StreamingRead(ctx)
 	require.NoError(t, err)
 
-	pump, err := topic.TestCreatePump(ctx, pqstreamreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
+	pump, err := topicreader.TestCreatePump(ctx, pqstreamreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
 	require.NoError(t, err)
-	batch, err := pump.ReadMessageBatch(ctx, topic.ReadMessageBatchOptions{})
+	batch, err := pump.ReadMessageBatch(ctx, topicreader.ReadMessageBatchOptions{})
 	require.NoError(t, err)
 	for _, mess := range batch.Messages {
 		data, err := io.ReadAll(mess.Data)
 		require.NoError(t, err)
 		t.Log(string(data))
 	}
-	require.NoError(t, pump.Commit(ctx, topic.CommitBatch{batch.GetCommitOffset()}))
+	require.NoError(t, pump.Commit(ctx, topicreader.CommitBatch{batch.GetCommitOffset()}))
 }
 
 func BenchmarkMassCommit(b *testing.B) {
-	source := make([]topic.Message, 10000)
+	source := make([]topicreader.Message, 10000)
 	for i := range source {
 		source[i].Offset.FromInt64(int64(i))
 		source[i].ToOffset.FromInt64(int64(i + 1))

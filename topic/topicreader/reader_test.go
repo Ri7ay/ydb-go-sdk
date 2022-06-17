@@ -1,4 +1,4 @@
-package topic
+package topicreader
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 )
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	pqproto "github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topiccodec"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
@@ -33,7 +34,6 @@ func encodeTopicSettings(settings topic.StreamSettings, opts ...topic.StreamOpti
 		// RetentionPeriodMs:                    settings.RetentionPeriod.Milliseconds(),
 		MessageGroupSeqnoRetentionPeriodMs:   settings.MessageGroupSeqnoRetentionPeriod.Milliseconds(),
 		MaxPartitionMessageGroupsSeqnoStored: int64(settings.MaxPartitionMessageGroupsSeqnoStored),
-		SupportedFormat:                      encodeFormat(settings.SupportedFormat),
 		SupportedCodecs:                      encodeCodecs(settings.SupportedCodecs),
 		MaxPartitionStorageSize:              int64(settings.MaxPartitionStorageSize),
 		MaxPartitionWriteSpeed:               int64(settings.MaxPartitionWriteSpeed),
@@ -49,7 +49,6 @@ func encodeReadRule(r topic.ReadRule) *pqproto.TopicSettings_ReadRule {
 		ConsumerName:               string(r.Consumer),
 		Important:                  r.Important,
 		StartingMessageTimestampMs: r.StartingMessageTimestamp.UnixMilli(),
-		SupportedFormat:            encodeFormat(r.SupportedFormat),
 		SupportedCodecs:            encodeCodecs(r.Codecs),
 		Version:                    int64(r.Version),
 		ServiceType:                r.ServiceType,
@@ -67,36 +66,25 @@ func encodeRemoteMirrorRule(r topic.RemoteMirrorRule) *pqproto.TopicSettings_Rem
 	}
 }
 
-func encodeCodecs(v []topic.Codec) []pqproto.Codec {
+func encodeCodecs(v []topiccodec.Codec) []pqproto.Codec {
 	result := make([]pqproto.Codec, len(v))
 	for i := range result {
 		switch v[i] {
-		case topic.CodecUnspecified:
+		case topiccodec.CodecUnspecified:
 			result[i] = pqproto.Codec_CODEC_UNSPECIFIED
-		case topic.CodecRaw:
+		case topiccodec.CodecRaw:
 			result[i] = pqproto.Codec_CODEC_RAW
-		case topic.CodecGzip:
+		case topiccodec.CodecGzip:
 			result[i] = pqproto.Codec_CODEC_GZIP
-		case topic.CodecLzop:
+		case topiccodec.CodecLzop:
 			result[i] = pqproto.Codec_CODEC_LZOP
-		case topic.CodecZstd:
+		case topiccodec.CodecZstd:
 			result[i] = pqproto.Codec_CODEC_ZSTD
 		default:
 			panic(fmt.Sprintf("unknown codec value %v", v))
 		}
 	}
 	return result
-}
-
-func encodeFormat(v topic.Format) pqproto.TopicSettings_Format {
-	switch v {
-	case topic.FormatUnspecified:
-		return pqproto.TopicSettings_FORMAT_UNSPECIFIED
-	case topic.FormatBase:
-		return pqproto.TopicSettings_FORMAT_BASE
-	default:
-		panic(fmt.Sprintf("unknown format value %v", v))
-	}
 }
 
 func encodeRemoteMirrorCredentials(v topic.RemoteMirrorCredentials) *pqproto.Credentials {

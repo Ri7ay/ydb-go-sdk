@@ -1,7 +1,7 @@
 //go:build !fast
 // +build !fast
 
-package topic_test
+package topicreader_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
-	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 	"google.golang.org/grpc"
 )
 
@@ -23,13 +23,13 @@ func TestReaderWithLocalDB(t *testing.T) {
 	defer func() { _ = db.Close(ctx) }()
 	require.NoError(t, err)
 
-	var connector topic.TopicSteamReaderConnect = func(ctx context.Context) (topic.ReaderStream, error) {
+	var connector topicreader.TopicSteamReaderConnect = func(ctx context.Context) (topicreader.ReaderStream, error) {
 		grpcConn := db.(grpc.ClientConnInterface)
 		pqClient := Ydb_PersQueue_V12.NewPersQueueServiceClient(grpcConn)
 		grpcStream, err := pqClient.StreamingRead(context.TODO())
 		return pqstreamreader.StreamReader{Stream: grpcStream}, err
 	}
-	reader := topic.NewReader(ctx, connector, "test", []topic.ReadSelector{
+	reader := topicreader.NewReader(ctx, connector, "test", []topicreader.ReadSelector{
 		{
 			Stream: "/local/asd",
 		},

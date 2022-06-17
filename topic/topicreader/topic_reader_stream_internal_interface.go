@@ -1,6 +1,8 @@
-package topic
+package topicreader
 
-import "context"
+import (
+	"context"
+)
 
 //go:generate mockgen -source topic_reader_stream_internal_interface.go -destination topic_reader_stream_internal_interface_mock_test.go -package topic -write_package_comment=false
 type topicStreamReader interface {

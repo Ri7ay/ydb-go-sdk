@@ -1,4 +1,4 @@
-package topic
+package topicreader
 
 import (
 	"context"
@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
-
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
 const (

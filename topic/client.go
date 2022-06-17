@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topiccodec"
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 )
@@ -20,8 +22,7 @@ type Client interface {
 	AddReadRule(context.Context, scheme.Path, ReadRule) error
 	RemoveReadRule(context.Context, scheme.Path, Consumer) error
 
-	Writer(ctx context.Context, opts ...writerOption) Writer
-	Reader(ctx context.Context, opts ...readerOption) *Reader // TODO: add selector as explicit arg
+	Reader(ctx context.Context, opts ...topicreader.ReaderOption) *topicreader.Reader // TODO: add selector as explicit arg
 }
 
 type Consumer string
@@ -35,12 +36,10 @@ type ReadRule struct {
 	StartingMessageTimestamp time.Time
 	// Flag that this consumer is important.
 	Important bool
-	// Max format version that is supported by this consumer.
-	// supported_format on topic must not be greater.
-	SupportedFormat Format
+
 	// List of supported codecs by this consumer.
 	// supported_codecs on topic must be contained inside this list.
-	Codecs []Codec
+	Codecs []topiccodec.Codec
 
 	// Read rule version. Any non-negative integer.
 	Version int
@@ -103,7 +102,6 @@ func (ss *StreamSettings) From(y *Ydb_PersQueue_V1.TopicSettings) {
 		MaxPartitionStorageSize:              int(y.MaxPartitionStorageSize),
 		MaxPartitionWriteSpeed:               int(y.MaxPartitionWriteSpeed),
 		MaxPartitionWriteBurst:               int(y.MaxPartitionWriteBurst),
-		SupportedFormat:                      decodeFormat(y.SupportedFormat),
 		ClientWriteDisabled:                  y.ClientWriteDisabled,
 	}
 }
@@ -117,7 +115,6 @@ func (rr *ReadRule) From(y *Ydb_PersQueue_V1.TopicSettings_ReadRule) {
 		Consumer:                 Consumer(y.ConsumerName),
 		StartingMessageTimestamp: time.UnixMilli(y.StartingMessageTimestampMs),
 		Important:                y.Important,
-		SupportedFormat:          decodeFormat(y.SupportedFormat),
 		Codecs:                   decodeCodecs(y.SupportedCodecs),
 		Version:                  int(y.Version),
 		ServiceType:              y.ServiceType,
@@ -139,32 +136,23 @@ func (rm *RemoteMirrorRule) From(y *Ydb_PersQueue_V1.TopicSettings_RemoteMirrorR
 	}
 }
 
-func decodeCodecs(y []Ydb_PersQueue_V1.Codec) []Codec {
-	codecs := make([]Codec, len(y))
+func decodeCodecs(y []Ydb_PersQueue_V1.Codec) []topiccodec.Codec {
+	codecs := make([]topiccodec.Codec, len(y))
 	for i := range codecs {
 		switch y[i] {
 		case Ydb_PersQueue_V1.Codec_CODEC_RAW:
-			codecs[i] = CodecRaw
+			codecs[i] = topiccodec.CodecRaw
 		case Ydb_PersQueue_V1.Codec_CODEC_GZIP:
-			codecs[i] = CodecGzip
+			codecs[i] = topiccodec.CodecGzip
 		case Ydb_PersQueue_V1.Codec_CODEC_LZOP:
-			codecs[i] = CodecLzop
+			codecs[i] = topiccodec.CodecLzop
 		case Ydb_PersQueue_V1.Codec_CODEC_ZSTD:
-			codecs[i] = CodecZstd
+			codecs[i] = topiccodec.CodecZstd
 		default:
-			codecs[i] = CodecUnspecified
+			codecs[i] = topiccodec.CodecUnspecified
 		}
 	}
 	return codecs
-}
-
-func decodeFormat(y Ydb_PersQueue_V1.TopicSettings_Format) Format {
-	switch y {
-	case Ydb_PersQueue_V1.TopicSettings_FORMAT_BASE:
-		return FormatBase
-	default:
-		return FormatUnspecified
-	}
 }
 
 func decodeCredentials(y *Ydb_PersQueue_V1.Credentials) RemoteMirrorCredentials {

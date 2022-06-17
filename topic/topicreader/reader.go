@@ -1,13 +1,15 @@
-package topic
+package topicreader
 
 import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 )
 
 var (
@@ -35,7 +37,7 @@ type ReadMessageBatchOptions struct {
 	maxMessages int
 }
 
-func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...readerOption) *Reader {
+func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...ReaderOption) *Reader {
 	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
 	readerConnector := func(ctx context.Context) (topicStreamReader, error) {
 		stream, err := connector(ctx)
@@ -93,6 +95,21 @@ forReadBatch:
 // ReadBatchOption для различных пожеланий к батчу вроде WithMaxMessages(int)
 type ReadBatchOption func(options *ReadMessageBatchOptions)
 
+type ReadSelector struct {
+	Stream             scheme.Path
+	Partitions         []int64
+	SkipMessagesBefore time.Time
+}
+
+func (s ReadSelector) clone() ReadSelector {
+	dst := s
+
+	dst.Partitions = make([]int64, len(s.Partitions))
+	copy(dst.Partitions, s.Partitions)
+
+	return dst
+}
+
 func ReadMaxMessagesCount(count int) ReadBatchOption {
 	return func(options *ReadMessageBatchOptions) {
 		options.maxMessages = count
@@ -145,7 +162,7 @@ func (r *Reader) messageReaderLoop(ctx context.Context) {
 	}
 }
 
-func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...readerOption) (cfg topicStreamReaderConfig) {
+func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...ReaderOption) (cfg topicStreamReaderConfig) {
 	cfg = newTopicStreamReaderConfig()
 	cfg.Consumer = consumer
 
