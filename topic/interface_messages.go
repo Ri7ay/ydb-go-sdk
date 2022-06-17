@@ -78,9 +78,7 @@ type Message struct {
 	MessageData
 	CommitOffset
 
-	Source    string
 	WrittenAt time.Time
-	IP        string
 
 	ctx context.Context // для отслеживания смерти assign
 }
@@ -135,7 +133,6 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 
 		cMess := &res.Messages[i]
 		cMess.Stream = stream
-		cMess.IP = sb.WriterIP
 		cMess.PartitionSession = session
 		cMess.ctx = batchContext
 
