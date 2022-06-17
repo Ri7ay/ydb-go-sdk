@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	errGracefulShutdownPartition = xerrors.Wrap(errors.New("graceful shutdown partition"))
-	errPartitionStopped          = xerrors.Wrap(errors.New("partition stopped"))
+	errGracefulShutdownPartition = xerrors.Wrap(errors.New("ydb: graceful shutdown partition"))
+	errPartitionStopped          = xerrors.Wrap(errors.New("ydb: partition stopped"))
 )
 
 type partitionSessionID = rawtopicreader.PartitionSessionID
@@ -519,16 +519,4 @@ func (c *pumpSessionController) onPartitionStatusResponse(m *rawtopicreader.Part
 	return c.sessionModify(m.PartitionSessionID, func(p *partitionSessionData) {
 		p.onStatusResponse(m)
 	})
-}
-
-func TestCreatePump(ctx context.Context, stream ReaderStream, cred credentials.Credentials) (*topicStreamReaderImpl, error) {
-	// TODO: remove
-	cfg := newTopicStreamReaderConfig()
-	cfg.BaseContext = ctx
-	cfg.Cred = cred
-	cfg.ReadSelectors = []ReadSelector{{
-		Stream: "/local/asd",
-	}}
-	cfg.Consumer = "test"
-	return newTopicStreamReader(stream, cfg)
 }
