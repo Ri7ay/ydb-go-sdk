@@ -74,7 +74,7 @@ func (s *PartitionSession) Context() context.Context {
 }
 
 type Message struct {
-	Stream           string
+	Topic            string
 	PartitionSession *PartitionSession
 
 	MessageData

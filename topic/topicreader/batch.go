@@ -30,6 +30,9 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 			return Batch{}, xerrors.NewWithStackTrace("ydb: bad message offset while messages batch create")
 		}
 
+		if mess.PartitionSession == nil {
+			mess.PartitionSession = session
+		}
 		if session != mess.PartitionSession {
 			return Batch{}, xerrors.NewWithStackTrace("ydb: bad session while messages batch create")
 		}
@@ -64,7 +67,7 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 		sMess := &sb.MessageData[i]
 
 		cMess := &res.Messages[i]
-		cMess.Stream = stream
+		cMess.Topic = stream
 		cMess.PartitionSession = session
 		cMess.ctx = batchContext
 
@@ -82,34 +85,39 @@ func (m Batch) Context() context.Context {
 	return m.partitionContext
 }
 
-func (m *Batch) PartitionSession() *PartitionSession {
+func (m Batch) PartitionSession() *PartitionSession {
 	panic("not implemented")
 }
 
-func (m *Batch) extendFromBatch(b *Batch) error {
+func (m Batch) append(b Batch) (Batch, error) {
 	if m.partitionSession != b.partitionSession {
-		return xerrors.WithStackTrace(errors.New("ydb: bad partition session for merge"))
+		return Batch{}, xerrors.WithStackTrace(errors.New("ydb: bad partition session for merge"))
 	}
 
 	if m.ToOffset != b.Offset {
-		return xerrors.WithStackTrace(errors.New("ydb: bad offset interval for merge"))
+		return Batch{}, xerrors.WithStackTrace(errors.New("ydb: bad offset interval for merge"))
 	}
 
-	m.Messages = append(m.Messages, b.Messages...)
-	m.ToOffset = b.ToOffset
-	return nil
+	res := m
+	res.Messages = append(m.Messages, b.Messages...)
+	res.ToOffset = b.ToOffset
+	return res, nil
 }
 
-func (m *Batch) cutMessages(count int) (head, rest Batch) {
-	if count >= len(m.Messages) {
-		return *m, Batch{}
+func (m Batch) cutMessages(count int) (head, rest Batch) {
+	switch {
+	case count == 0:
+		return Batch{}, m
+	case count >= len(m.Messages):
+		return m, Batch{}
+	default:
+		head, _ = newBatch(m.partitionSession, m.Messages[:count])
+		rest, _ = newBatch(m.partitionSession, m.Messages[count:])
+		return head, rest
 	}
 
-	head, _ = newBatch(m.partitionSession, m.Messages[:count])
-	rest, _ = newBatch(m.partitionSession, m.Messages[count:])
-	return head, rest
 }
 
-func (m *Batch) isEmpty() bool {
+func (m Batch) isEmpty() bool {
 	return len(m.Messages) == 0
 }

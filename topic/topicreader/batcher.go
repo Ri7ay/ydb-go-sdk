@@ -6,11 +6,6 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
-type topicPartitionSessionID struct {
-	Topic string
-	partitionSessionID
-}
-
 type batcher struct {
 	m        xsync.Mutex
 	messages batcherMessagesMap
@@ -25,22 +20,23 @@ func newBatcher() *batcher {
 	}
 }
 
-func (b *batcher) Add(batch *Batch) error {
+func (b *batcher) Add(batch Batch) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
 	return b.addNeedLock(batch)
 }
 
-func (b *batcher) addNeedLock(batch *Batch) error {
+func (b *batcher) addNeedLock(batch Batch) error {
 	var currentBatch Batch
 	var ok bool
+	var err error
 	if currentBatch, ok = b.messages[batch.partitionSession]; ok {
-		if err := currentBatch.extendFromBatch(batch); err != nil {
+		if currentBatch, err = currentBatch.append(batch); err != nil {
 			return err
 		}
 	} else {
-		currentBatch = *batch
+		currentBatch = batch
 	}
 
 	b.messages[batch.partitionSession] = currentBatch
@@ -51,48 +47,47 @@ func (b *batcher) addNeedLock(batch *Batch) error {
 }
 
 type batcherGetOptions struct {
+	MinCount int
 	MaxCount int
 }
 
+func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
+	notFound := func() (Batch, Batch, bool) {
+		return Batch{}, Batch{}, false
+	}
+
+	if len(batch.Messages) < o.MinCount {
+		return notFound()
+	}
+
+	if o.MaxCount == 0 {
+		return batch, Batch{}, true
+	}
+
+	head, rest = batch.cutMessages(o.MaxCount)
+	return head, rest, true
+}
+
 func (b *batcher) Get(ctx context.Context, opts batcherGetOptions) (Batch, error) {
-	res, ok := b.get(opts)
-	if ok {
-		return res, nil
+	var findRes batcherResultCandidate
+	b.m.WithLock(func() {
+		findRes = b.findNeedLock(batcherWaiter{Options: opts})
+		if !findRes.Ok {
+			return
+		}
+		b.applyNeedLock(findRes)
+	})
+	if findRes.Ok {
+		return findRes.Result, nil
 	}
 
 	resChan := b.createWaiter(opts)
 	select {
-	case res = <-resChan:
-		return res, nil
+	case batch := <-resChan:
+		return batch, nil
 	case <-ctx.Done():
 		return Batch{}, ctx.Err()
 	}
-}
-
-func (b *batcher) get(opts batcherGetOptions) (Batch, bool) {
-	b.m.Lock()
-	defer b.m.Unlock()
-
-	return b.getNeedLock(opts)
-}
-
-func (b *batcher) getNeedLock(opts batcherGetOptions) (Batch, bool) {
-	for k, v := range b.messages {
-		if opts.MaxCount > 0 {
-			head, rest := v.cutMessages(opts.MaxCount)
-			if rest.isEmpty() {
-				delete(b.messages, k)
-			} else {
-				b.messages[k] = rest
-			}
-			return head, true
-		} else {
-			delete(b.messages, k)
-			return v, true
-		}
-	}
-
-	return Batch{}, false
 }
 
 func (b *batcher) createWaiter(opts batcherGetOptions) <-chan Batch {
@@ -109,30 +104,76 @@ func (b *batcher) createWaiter(opts batcherGetOptions) <-chan Batch {
 }
 
 func (b *batcher) fireWaitersNeedLock() {
-	if len(b.waiters) == 0 {
-		return
+	for {
+		resCandidate := b.findNeedLock(b.waiters...)
+		if !resCandidate.Ok {
+			return
+		}
+
+		waiter := b.removeWaiterNeedLock(resCandidate.WaiterIndex)
+
+		select {
+		case waiter.Result <- resCandidate.Result:
+			// waiter receive the result, commit it
+			b.applyNeedLock(resCandidate)
+			return
+		default:
+			// waiter cancelled, try with other waiter
+		}
 	}
+}
 
-	waiter := b.waiters[0]
+func (b *batcher) removeWaiterNeedLock(index int) batcherWaiter {
+	waiter := b.waiters[index]
 
-	res, ok := b.get(waiter.Options)
-	if !ok {
-		return
-	}
-
-	copy(b.waiters, b.waiters[1:])
+	copy(b.waiters[index:], b.waiters[index+1:])
 	b.waiters = b.waiters[:len(b.waiters)-1]
 
-	select {
-	case waiter.Result <- res:
-		return
-	default:
-		_ = b.addNeedLock(&res)
-	}
+	return waiter
 }
 
 func (b *batcher) pubBatchNeedLock(batch Batch) {
 	b.messages[batch.partitionSession] = batch
+}
+
+type batcherResultCandidate struct {
+	Key         *PartitionSession
+	Result      Batch
+	Rest        Batch
+	WaiterIndex int
+	Ok          bool
+}
+
+func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate {
+	if len(waiters) == 0 || len(b.messages) == 0 {
+		return batcherResultCandidate{}
+	}
+
+	for k, batch := range b.messages {
+		for waiterIndex, waiter := range waiters {
+			head, rest, ok := waiter.Options.splitBatch(batch)
+			if !ok {
+				continue
+			}
+			return batcherResultCandidate{
+				Key:         k,
+				Result:      head,
+				Rest:        rest,
+				WaiterIndex: waiterIndex,
+				Ok:          true,
+			}
+		}
+	}
+
+	return batcherResultCandidate{}
+}
+
+func (b *batcher) applyNeedLock(res batcherResultCandidate) {
+	if res.Rest.isEmpty() {
+		delete(b.messages, res.Key)
+	} else {
+		b.messages[res.Key] = res.Rest
+	}
 }
 
 type batcherWaiter struct {

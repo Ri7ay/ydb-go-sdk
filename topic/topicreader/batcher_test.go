@@ -35,9 +35,9 @@ func TestBatcher_Add(t *testing.T) {
 	require.NoError(t, err)
 
 	b := newBatcher()
-	require.NoError(t, b.Add(&batch1))
-	require.NoError(t, b.Add(&batch2))
-	require.NoError(t, b.Add(&batch3))
+	require.NoError(t, b.Add(batch1))
+	require.NoError(t, b.Add(batch2))
+	require.NoError(t, b.Add(batch3))
 
 	expectedSession1, _ := newBatch(session1, []Message{m11, m12})
 	expectedSession2, _ := newBatch(session2, []Message{m21, m22})
@@ -56,7 +56,7 @@ func TestBatcher_GetBatch(t *testing.T) {
 		require.NoError(t, err)
 
 		b := newBatcher()
-		require.NoError(t, b.Add(&batch))
+		require.NoError(t, b.Add(batch))
 
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
@@ -72,8 +72,8 @@ func TestBatcher_GetBatch(t *testing.T) {
 		require.NoError(t, err)
 
 		b := newBatcher()
-		require.NoError(t, b.Add(&batch))
-		require.NoError(t, b.Add(&batch2))
+		require.NoError(t, b.Add(batch))
+		require.NoError(t, b.Add(batch2))
 
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 		go func() {
 			time.Sleep(time.Millisecond)
-			_ = b.Add(&batch)
+			_ = b.Add(batch)
 		}()
 
 		res, err := b.Get(ctx, batcherGetOptions{})
@@ -114,7 +114,7 @@ func TestBatcher_GetBatch(t *testing.T) {
 		require.NoError(t, err)
 
 		b := newBatcher()
-		require.NoError(t, b.Add(&batch))
+		require.NoError(t, b.Add(batch))
 
 		res, err := b.Get(ctx, batcherGetOptions{MaxCount: 1})
 		require.NoError(t, err)
@@ -129,5 +129,141 @@ func TestBatcher_GetBatch(t *testing.T) {
 			nil: expectedRestBatch,
 		}
 		require.Equal(t, expectedMessages, b.messages)
+	})
+}
+
+func TestBatcher_Find(t *testing.T) {
+	t.Run("Empty", func(t *testing.T) {
+		b := newBatcher()
+		findRes := b.findNeedLock()
+		require.False(t, findRes.Ok)
+	})
+	t.Run("FoundEmptyFilter", func(t *testing.T) {
+		session := &PartitionSession{}
+		batch, err := newBatch(session, []Message{{Topic: "1"}})
+		require.NoError(t, err)
+
+		b := newBatcher()
+
+		require.NoError(t, b.Add(batch))
+
+		findRes := b.findNeedLock(batcherWaiter{})
+		expectedResult := batcherResultCandidate{
+			Key:         session,
+			Result:      batch,
+			Rest:        Batch{},
+			WaiterIndex: 0,
+			Ok:          true,
+		}
+		require.Equal(t, expectedResult, findRes)
+	})
+
+	t.Run("FoundPartialBatchFilter", func(t *testing.T) {
+		session := &PartitionSession{}
+		batch, err := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+		require.NoError(t, err)
+
+		b := newBatcher()
+
+		require.NoError(t, b.Add(batch))
+
+		expectedResultBatch, _ := newBatch(session, []Message{{Topic: "1"}})
+		expectedRestBatch, _ := newBatch(session, []Message{{Topic: "2"}})
+		findRes := b.findNeedLock(batcherWaiter{Options: batcherGetOptions{MaxCount: 1}})
+		expectedResult := batcherResultCandidate{
+			Key:         session,
+			Result:      expectedResultBatch,
+			Rest:        expectedRestBatch,
+			WaiterIndex: 0,
+			Ok:          true,
+		}
+		require.Equal(t, expectedResult, findRes)
+	})
+}
+
+func TestBatcher_Apply(t *testing.T) {
+	t.Run("New", func(t *testing.T) {
+		session := &PartitionSession{}
+		b := newBatcher()
+
+		batch, _ := newBatch(session, []Message{{Topic: "1"}})
+		foundRes := batcherResultCandidate{
+			Key:  session,
+			Rest: batch,
+		}
+		b.applyNeedLock(foundRes)
+
+		expectedMap := batcherMessagesMap{session: batch}
+		require.Equal(t, expectedMap, b.messages)
+	})
+
+	t.Run("Delete", func(t *testing.T) {
+		session := &PartitionSession{}
+		b := newBatcher()
+
+		batch, _ := newBatch(session, []Message{{Topic: "1"}})
+
+		foundRes := batcherResultCandidate{
+			Key:  session,
+			Rest: Batch{},
+		}
+
+		b.messages = batcherMessagesMap{session: batch}
+
+		b.applyNeedLock(foundRes)
+
+		require.Empty(t, b.messages)
+	})
+
+}
+
+func TestBatcherGetOptions_Split(t *testing.T) {
+	t.Run("Empty", func(t *testing.T) {
+		opts := batcherGetOptions{}
+		batch, _ := newBatch(nil, []Message{{Topic: "1"}, {Topic: "2"}})
+		head, rest, ok := opts.splitBatch(batch)
+
+		require.Equal(t, batch, head)
+		require.True(t, rest.isEmpty())
+		require.True(t, ok)
+	})
+	t.Run("MinCount", func(t *testing.T) {
+		opts := batcherGetOptions{MinCount: 2}
+		batch1, _ := newBatch(nil, []Message{{Topic: "1"}})
+		batch2, _ := newBatch(nil, []Message{{Topic: "1"}, {Topic: "2"}})
+
+		head, rest, ok := opts.splitBatch(batch1)
+		require.True(t, head.isEmpty())
+		require.True(t, rest.isEmpty())
+		require.False(t, ok)
+
+		head, rest, ok = opts.splitBatch(batch2)
+		require.Equal(t, batch2, head)
+		require.True(t, rest.isEmpty())
+		require.True(t, ok)
+	})
+	t.Run("MaxCount", func(t *testing.T) {
+		opts := batcherGetOptions{MaxCount: 2}
+		batch1, _ := newBatch(nil, []Message{{Topic: "1"}})
+		batch2, _ := newBatch(nil, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch3, _ := newBatch(nil, []Message{{Topic: "a"}, {Topic: "b"}, {Topic: "c"}, {Topic: "d"}})
+
+		head, rest, ok := opts.splitBatch(batch1)
+		require.Equal(t, batch1, head)
+		require.True(t, rest.isEmpty())
+		require.True(t, ok)
+
+		head, rest, ok = opts.splitBatch(batch2)
+		require.Equal(t, batch2, head)
+		require.True(t, rest.isEmpty())
+		require.True(t, ok)
+
+		head, rest, ok = opts.splitBatch(batch3)
+		expectedHead, _ := newBatch(nil, []Message{{Topic: "a"}, {Topic: "b"}})
+		expectedRest, _ := newBatch(nil, []Message{{Topic: "c"}, {Topic: "d"}})
+		require.Equal(t, expectedHead, head)
+		require.Equal(t, expectedRest, rest)
+		require.True(t, ok)
+
 	})
 }

@@ -30,6 +30,38 @@ func TestBatch_New(t *testing.T) {
 	})
 }
 
+func TestBatch_Cut(t *testing.T) {
+	t.Run("Full", func(t *testing.T) {
+		session := &PartitionSession{}
+		batch, _ := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+
+		head, rest := batch.cutMessages(100)
+
+		require.Equal(t, batch, head)
+		require.True(t, rest.isEmpty())
+	})
+	t.Run("Zero", func(t *testing.T) {
+		session := &PartitionSession{}
+		batch, _ := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+
+		head, rest := batch.cutMessages(0)
+
+		require.Equal(t, batch, rest)
+		require.True(t, head.isEmpty())
+	})
+	t.Run("Middle", func(t *testing.T) {
+		session := &PartitionSession{}
+		batch, _ := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+
+		head, rest := batch.cutMessages(1)
+
+		expectedBatchHead, _ := newBatch(session, []Message{{Topic: "1"}})
+		expectedBatchRest, _ := newBatch(session, []Message{{Topic: "2"}})
+		require.Equal(t, expectedBatchHead, head)
+		require.Equal(t, expectedBatchRest, rest)
+	})
+}
+
 func TestBatch_Extend(t *testing.T) {
 	t.Run("Ok", func(t *testing.T) {
 		session := &PartitionSession{}
@@ -53,14 +85,15 @@ func TestBatch_Extend(t *testing.T) {
 			CommitOffset:     m2.CommitOffset,
 			partitionSession: session,
 		}
-		require.NoError(t, b1.extendFromBatch(&b2))
+		res, err := b1.append(b2)
+		require.NoError(t, err)
 
 		expected := Batch{
 			Messages:         []Message{m1, m2},
 			CommitOffset:     CommitOffset{Offset: 10, ToOffset: 12},
 			partitionSession: session,
 		}
-		require.Equal(t, expected, b1)
+		require.Equal(t, expected, res)
 	})
 	t.Run("BadInterval", func(t *testing.T) {
 		m1 := Message{
@@ -81,13 +114,10 @@ func TestBatch_Extend(t *testing.T) {
 			Messages:     []Message{m2},
 			CommitOffset: m2.CommitOffset,
 		}
-		require.Error(t, b1.extendFromBatch(&b2))
+		res, err := b1.append(b2)
+		require.Error(t, err)
 
-		expected := Batch{
-			Messages:     []Message{m1},
-			CommitOffset: m1.CommitOffset,
-		}
-		require.Equal(t, expected, b1)
+		require.Equal(t, Batch{}, res)
 	})
 	t.Run("BadSession", func(t *testing.T) {
 		m1 := Message{
@@ -101,25 +131,20 @@ func TestBatch_Extend(t *testing.T) {
 
 		session1 := &PartitionSession{}
 		session2 := &PartitionSession{}
-		b1 := &Batch{
+		b1 := Batch{
 			Messages:         []Message{m1},
 			CommitOffset:     m1.CommitOffset,
 			partitionSession: session1,
 		}
 
-		b2 := &Batch{
+		b2 := Batch{
 			Messages:         []Message{m2},
 			CommitOffset:     m2.CommitOffset,
 			partitionSession: session2,
 		}
-		require.Error(t, b1.extendFromBatch(b2))
-
-		expected := &Batch{
-			Messages:         []Message{m1},
-			CommitOffset:     m1.CommitOffset,
-			partitionSession: session1,
-		}
-		require.Equal(t, expected, b1)
+		res, err := b1.append(b2)
+		require.Error(t, err)
+		require.Equal(t, Batch{}, res)
 	})
 }
 
