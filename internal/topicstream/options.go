@@ -1,4 +1,4 @@
-package ipq
+package topicstream
 
 import (
 	"fmt"

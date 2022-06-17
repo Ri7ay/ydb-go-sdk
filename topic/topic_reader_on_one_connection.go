@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"

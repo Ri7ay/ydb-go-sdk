@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/blocks"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/blocks"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 )
 

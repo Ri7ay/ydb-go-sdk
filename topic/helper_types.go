@@ -3,7 +3,7 @@ package topic
 import (
 	"sort"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
 )
 
 type CommitableByOffset interface { // Интерфейс, который можно коммитить по оффсету

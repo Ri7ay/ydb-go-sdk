@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 	"google.golang.org/grpc"
 )

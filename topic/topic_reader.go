@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/ipq/pqstreamreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/pqstreamreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
