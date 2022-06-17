@@ -96,9 +96,9 @@ forReadBatch:
 type ReadBatchOption func(options *ReadMessageBatchOptions)
 
 type ReadSelector struct {
-	Stream             scheme.Path
-	Partitions         []int64
-	SkipMessagesBefore time.Time
+	Stream     scheme.Path
+	Partitions []int64
+	ReadFrom   time.Time
 }
 
 func (s ReadSelector) clone() ReadSelector {

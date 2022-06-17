@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-	topicrawreader2 "github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream/topicrawreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -21,7 +21,7 @@ var (
 	errPartitionStopped          = xerrors.Wrap(errors.New("partition stopped"))
 )
 
-type partitionSessionID = topicrawreader2.PartitionSessionID
+type partitionSessionID = rawtopicreader.PartitionSessionID
 
 type topicStreamReaderImpl struct {
 	cfg    topicStreamReaderConfig
@@ -38,7 +38,7 @@ type topicStreamReaderImpl struct {
 	m             xsync.RWMutex
 	err           error
 	started       bool
-	readResponses []*topicrawreader2.ReadResponse // use slice instead channel for guarantee read grpc stream without block
+	readResponses []*rawtopicreader.ReadResponse // use slice instead channel for guarantee read grpc stream without block
 }
 
 type topicStreamReaderConfig struct {
@@ -50,18 +50,18 @@ type topicStreamReaderConfig struct {
 	ReadSelectors      []ReadSelector
 }
 
-func (cfg *topicStreamReaderConfig) initMessage() topicrawreader2.ClientMessage {
+func (cfg *topicStreamReaderConfig) initMessage() rawtopicreader.ClientMessage {
 	// TODO improve
-	res := &topicrawreader2.InitRequest{
+	res := &rawtopicreader.InitRequest{
 		Consumer: cfg.Consumer,
 	}
 
-	res.TopicsReadSettings = make([]topicrawreader2.TopicReadSettings, len(cfg.ReadSelectors))
+	res.TopicsReadSettings = make([]rawtopicreader.TopicReadSettings, len(cfg.ReadSelectors))
 	for i, selector := range cfg.ReadSelectors {
-		res.TopicsReadSettings[i] = topicrawreader2.TopicReadSettings{
-			Topic:            selector.Stream.String(),
-			PartitionsID:     selector.Partitions,
-			StartFromWritten: selector.SkipMessagesBefore,
+		res.TopicsReadSettings[i] = rawtopicreader.TopicReadSettings{
+			Path:         selector.Stream.String(),
+			PartitionsID: selector.Partitions,
+			ReadFrom:     selector.ReadFrom,
 		}
 	}
 
@@ -120,13 +120,13 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts ReadM
 }
 
 func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) error {
-	req := &topicrawreader2.CommitOffsetRequest{
-		PartitionsOffsets: offset.toPartitionsOffsets(),
+	req := &rawtopicreader.CommitOffsetRequest{
+		CommitOffsets: offset.toPartitionsOffsets(),
 	}
 	return r.stream.Send(req)
 }
 
-func (r *topicStreamReaderImpl) send(mess topicrawreader2.ClientMessage) error {
+func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
 	err := r.stream.Send(mess)
 	if err != nil {
 		r.Close(nil, err)
@@ -172,11 +172,11 @@ func (r *topicStreamReaderImpl) initSession() error {
 		return err
 	}
 
-	if status := resp.StatusData(); status.Status != topicrawreader.StatusSuccess {
+	if status := resp.StatusData(); !status.Status.IsSuccess() {
 		return xerrors.WithStackTrace(fmt.Errorf("bad status on initial error: %v (%v)", status.Status, status.Issues))
 	}
 
-	_, ok := resp.(*topicrawreader2.InitResponse)
+	_, ok := resp.(*rawtopicreader.InitResponse)
 	if !ok {
 		return xerrors.WithStackTrace(fmt.Errorf("bad message type on session init: %v (%v)", resp, reflect.TypeOf(resp)))
 	}
@@ -194,37 +194,37 @@ func (r *topicStreamReaderImpl) readMessagesLoop() {
 		}
 
 		status := serverMessage.StatusData()
-		if status.Status != topicrawreader.StatusSuccess {
+		if !status.Status.IsSuccess() {
 			// TODO: actualize error message
 			r.Close(nil, xerrors.WithStackTrace(fmt.Errorf("bad status from pq grpc stream: %v", status.Status)))
 		}
 
 		switch m := serverMessage.(type) {
-		case *topicrawreader2.ReadResponse:
+		case *rawtopicreader.ReadResponse:
 			r.onReadResponse(m)
-		case *topicrawreader2.StartPartitionSessionRequest:
+		case *rawtopicreader.StartPartitionSessionRequest:
 			if err = r.sessionController.onStartPartitionSessionRequest(m); err != nil {
 				r.Close(nil, err)
 				return
 			}
-		case *topicrawreader2.StopPartitionSessionRequest:
+		case *rawtopicreader.StopPartitionSessionRequest:
 			if err = r.sessionController.onStopPartitionSessionRequest(m); err != nil {
 				r.Close(nil, err)
 				return
 			}
-		case *topicrawreader2.CommitOffsetResponse:
+		case *rawtopicreader.CommitOffsetResponse:
 			if err = r.onCommitResponse(m); err != nil {
 				r.Close(nil, err)
 				return
 			}
 
-		case *topicrawreader2.PartitionSessionStatusResponse:
+		case *rawtopicreader.PartitionSessionStatusResponse:
 			if err = r.sessionController.onPartitionStatusResponse(m); err != nil {
 				r.Close(nil, err)
 			}
 			return
 
-		case *topicrawreader2.UpdateTokenResponse:
+		case *rawtopicreader.UpdateTokenResponse:
 			// skip
 		default:
 			// TODO: remove before release
@@ -247,7 +247,7 @@ func (r *topicStreamReaderImpl) dataRequestLoop() {
 			return
 
 		case free := <-r.freeBytes:
-			err := r.stream.Send(&topicrawreader2.ReadRequest{BytesSize: free})
+			err := r.stream.Send(&rawtopicreader.ReadRequest{BytesSize: free})
 			if err != nil {
 				r.Close(nil, err)
 			}
@@ -299,7 +299,7 @@ func (r *topicStreamReaderImpl) updateTokenLoop() {
 	}
 }
 
-func (r *topicStreamReaderImpl) getFirstReadResponse() (res *topicrawreader2.ReadResponse) {
+func (r *topicStreamReaderImpl) getFirstReadResponse() (res *rawtopicreader.ReadResponse) {
 	r.m.Lock()
 	defer r.m.Unlock()
 
@@ -313,15 +313,15 @@ func (r *topicStreamReaderImpl) getFirstReadResponse() (res *topicrawreader2.Rea
 	return res
 }
 
-func (r *topicStreamReaderImpl) dataParse(mess *topicrawreader2.ReadResponse) {
+func (r *topicStreamReaderImpl) dataParse(mess *rawtopicreader.ReadResponse) {
 	batchesCount := 0
-	for i := range mess.Partitions {
-		batchesCount += len(mess.Partitions[i].Batches)
+	for i := range mess.PartitionData {
+		batchesCount += len(mess.PartitionData[i].Batches)
 	}
 
 	doneChannel := r.ctx.Done()
-	for pIndex := range mess.Partitions {
-		p := &mess.Partitions[pIndex]
+	for pIndex := range mess.PartitionData {
+		p := &mess.PartitionData[pIndex]
 		session := &PartitionSession{
 			PartitionID: -1,
 			ID:          p.PartitionSessionID,
@@ -348,11 +348,11 @@ func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
 	})
 }
 
-func (r *topicStreamReaderImpl) onCommitResponse(mess *topicrawreader2.CommitOffsetResponse) error {
-	for i := range mess.Committed {
-		commit := &mess.Committed[i]
+func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffsetResponse) error {
+	for i := range mess.PartitionsCommittedOffsets {
+		commit := &mess.PartitionsCommittedOffsets[i]
 		err := r.sessionController.sessionModify(commit.PartitionSessionID, func(p *partitionSessionData) {
-			p.commitOffsetNotify(commit.Committed, nil)
+			p.commitOffsetNotify(commit.CommittedOffset, nil)
 		})
 		if err != nil {
 			return err
@@ -362,7 +362,7 @@ func (r *topicStreamReaderImpl) onCommitResponse(mess *topicrawreader2.CommitOff
 	return nil
 }
 
-func (r *topicStreamReaderImpl) onReadResponse(mess *topicrawreader2.ReadResponse) {
+func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse) {
 	r.m.WithLock(func() {
 		r.readResponses = append(r.readResponses, mess)
 		select {
@@ -380,7 +380,7 @@ func (r *topicStreamReaderImpl) updateToken(ctx context.Context) error {
 		return xerrors.WithStackTrace(err)
 	}
 
-	err = r.send(&topicrawreader2.UpdateTokenRequest{Token: token})
+	err = r.send(&rawtopicreader.UpdateTokenRequest{UpdateTokenRequest: rawtopic.UpdateTokenRequest{Token: token}})
 	if err != nil {
 		return err
 	}
@@ -398,9 +398,9 @@ type partitionSessionData struct {
 	commitWaiters  []commitWaiter
 }
 
-func newPartitionSessionData(readerCtx context.Context, mess *topicrawreader2.StartPartitionSessionRequest) *partitionSessionData {
+func newPartitionSessionData(readerCtx context.Context, mess *rawtopicreader.StartPartitionSessionRequest) *partitionSessionData {
 	res := &partitionSessionData{
-		Topic:       mess.PartitionSession.Topic,
+		Topic:       mess.PartitionSession.Path,
 		PartitionID: mess.PartitionSession.PartitionID,
 	}
 
@@ -409,7 +409,7 @@ func newPartitionSessionData(readerCtx context.Context, mess *topicrawreader2.St
 	return res
 }
 
-func (p *partitionSessionData) commitOffsetNotify(offset topicrawreader2.Offset, err error) {
+func (p *partitionSessionData) commitOffsetNotify(offset rawtopicreader.Offset, err error) {
 	newWaiters := p.commitWaiters[:0]
 	for i := range p.commitWaiters {
 		waiter := &p.commitWaiters[i]
@@ -433,12 +433,12 @@ func (p *partitionSessionData) close(err error) {
 	}
 }
 
-func (p *partitionSessionData) onStatusResponse(m *topicrawreader2.PartitionSessionStatusResponse) {
+func (p *partitionSessionData) onStatusResponse(m *rawtopicreader.PartitionSessionStatusResponse) {
 	// TODO: response to status waiters?
 }
 
 type commitWaiter struct {
-	offset topicrawreader2.Offset
+	offset rawtopicreader.Offset
 	notify func(error)
 }
 
@@ -461,10 +461,10 @@ func (c *pumpSessionController) requestStatus(id partitionSessionID) error {
 		return xerrors.WithStackTrace(fmt.Errorf("unexpected session id: %v", id))
 	}
 
-	return c.r.send(&topicrawreader2.PartitionSessionStatusRequest{PartitionSessionID: id})
+	return c.r.send(&rawtopicreader.PartitionSessionStatusRequest{PartitionSessionID: id})
 }
 
-func (c *pumpSessionController) onStartPartitionSessionRequest(mess *topicrawreader2.StartPartitionSessionRequest) error {
+func (c *pumpSessionController) onStartPartitionSessionRequest(mess *rawtopicreader.StartPartitionSessionRequest) error {
 	// TODO: improve handler
 	// TODO: add user handler
 
@@ -474,10 +474,10 @@ func (c *pumpSessionController) onStartPartitionSessionRequest(mess *topicrawrea
 		return err
 	}
 
-	return c.r.send(&topicrawreader2.StartPartitionSessionResponse{PartitionSessionID: mess.PartitionSession.PartitionSessionID})
+	return c.r.send(&rawtopicreader.StartPartitionSessionResponse{PartitionSessionID: mess.PartitionSession.PartitionSessionID})
 }
 
-func (c *pumpSessionController) onStopPartitionSessionRequest(mess *topicrawreader2.StopPartitionSessionRequest) error {
+func (c *pumpSessionController) onStopPartitionSessionRequest(mess *rawtopicreader.StopPartitionSessionRequest) error {
 	if mess.Graceful {
 		err := c.sessionModify(mess.PartitionSessionID, func(p *partitionSessionData) {
 			p.nofityGraceful()
@@ -528,7 +528,7 @@ func (c *pumpSessionController) sessionModify(id partitionSessionID, callback fu
 	return xerrors.WithStackTrace(fmt.Errorf("modify unexpectet session id: %v", id))
 }
 
-func (c *pumpSessionController) onPartitionStatusResponse(m *topicrawreader2.PartitionSessionStatusResponse) error {
+func (c *pumpSessionController) onPartitionStatusResponse(m *rawtopicreader.PartitionSessionStatusResponse) error {
 	return c.sessionModify(m.PartitionSessionID, func(p *partitionSessionData) {
 		p.onStatusResponse(m)
 	})

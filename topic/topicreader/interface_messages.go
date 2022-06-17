@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
@@ -116,20 +117,19 @@ type Batch struct {
 
 func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb rawtopicreader.Batch) *Batch {
 	var res Batch
-	res.sizeBytes = sb.SizeBytes
-	res.WriteTimestamp = sb.WriteTimeStamp
-	res.Messages = make([]Message, len(sb.Messages))
+	res.WriteTimestamp = sb.WrittenAt
+	res.Messages = make([]Message, len(sb.MessageData))
 	res.partitionContext = batchContext
 
-	if len(sb.Messages) > 0 {
+	if len(sb.MessageData) > 0 {
 		commitOffset := &res.CommitOffset
 		commitOffset.partitionSessionID = session.ID
-		commitOffset.Offset = sb.Messages[0].Offset
-		commitOffset.ToOffset = sb.Messages[len(sb.Messages)-1].Offset + 1
+		commitOffset.Offset = sb.MessageData[0].Offset
+		commitOffset.ToOffset = sb.MessageData[len(sb.MessageData)-1].Offset + 1
 	}
 
-	for i := range sb.Messages {
-		sMess := &sb.Messages[i]
+	for i := range sb.MessageData {
+		sMess := &sb.MessageData[i]
 
 		cMess := &res.Messages[i]
 		cMess.Stream = stream
@@ -138,8 +138,8 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 
 		messData := &cMess.MessageData
 		messData.SeqNo = sMess.SeqNo
-		messData.CreatedAt = sMess.Created
-		messData.Data = createReader(sMess.Codec, sMess.Data)
+		messData.CreatedAt = sMess.CreatedAt
+		messData.Data = createReader(sb.Codec, sMess.Data)
 		res.sizeBytes += len(sMess.Data)
 	}
 
@@ -156,11 +156,11 @@ func (m *Batch) PartitionSession() *PartitionSession {
 
 var _ CommitableByOffset = Batch{}
 
-func createReader(codec rawtopicreader.Codec, rawBytes []byte) io.Reader {
+func createReader(codec rawtopic.Codec, rawBytes []byte) io.Reader {
 	switch codec {
-	case rawtopicreader.CodecRaw:
+	case rawtopic.CodecRaw:
 		return bytes.NewReader(rawBytes)
-	case rawtopicreader.CodecGzip:
+	case rawtopic.CodecGzip:
 		gzipReader, err := gzip.NewReader(bytes.NewReader(rawBytes))
 		if err != nil {
 			return errorReader{err: xerrors.WithStackTrace(fmt.Errorf("failed read gzip message: %w", err))}
