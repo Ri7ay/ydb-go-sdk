@@ -26,7 +26,7 @@ type ReaderStream interface {
 type TopicSteamReaderConnect func(ctx context.Context) (ReaderStream, error)
 
 type Reader struct {
-	reader     topicStreamReader
+	reader     streamReader
 	oneMessage chan *Message
 
 	messageReaderLoopOnce sync.Once
@@ -39,7 +39,7 @@ type ReadMessageBatchOptions struct {
 
 func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...ReaderOption) *Reader {
 	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
-	readerConnector := func(ctx context.Context) (topicStreamReader, error) {
+	readerConnector := func(ctx context.Context) (streamReader, error) {
 		stream, err := connector(ctx)
 		if err != nil {
 			return nil, err

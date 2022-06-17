@@ -20,20 +20,20 @@ const (
 	forceReconnectInterval = time.Hour * 24 * 365 * 100 // never
 )
 
-type readerConnectFunc func(ctx context.Context) (topicStreamReader, error)
+type readerConnectFunc func(ctx context.Context) (streamReader, error)
 
 type readerReconnector struct {
 	background backgroundworkers.BackgroundWorker
 
 	readerConnect readerConnectFunc
 
-	reconnectFromBadStream chan topicStreamReader
+	reconnectFromBadStream chan streamReader
 
 	closeOnce sync.Once
 
 	m                          xsync.RWMutex
 	streamConnectionInProgress chan struct{} // opened if connection in progress, closed if connection established
-	streamVal                  topicStreamReader
+	streamVal                  streamReader
 	streamErr                  error
 	closedErr                  error
 }
@@ -111,7 +111,7 @@ func (r *readerReconnector) start(ctx context.Context) {
 }
 
 func (r *readerReconnector) initChannels() {
-	r.reconnectFromBadStream = make(chan topicStreamReader, 1)
+	r.reconnectFromBadStream = make(chan streamReader, 1)
 	r.streamConnectionInProgress = make(chan struct{})
 	close(r.streamConnectionInProgress) // no progress at start
 }
@@ -131,7 +131,7 @@ func (r *readerReconnector) reconnectionLoop(ctx context.Context) {
 	}
 }
 
-func (r *readerReconnector) reconnect(ctx context.Context, oldReader topicStreamReader) {
+func (r *readerReconnector) reconnect(ctx context.Context, oldReader streamReader) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -168,7 +168,7 @@ func (r *readerReconnector) reconnect(ctx context.Context, oldReader topicStream
 	})
 }
 
-func (r *readerReconnector) fireReconnectOnRetryableError(stream topicStreamReader, err error) {
+func (r *readerReconnector) fireReconnectOnRetryableError(stream streamReader, err error) {
 	if !isRetryableError(err) {
 		return
 	}
@@ -181,7 +181,7 @@ func (r *readerReconnector) fireReconnectOnRetryableError(stream topicStreamRead
 	}
 }
 
-func (r *readerReconnector) stream(ctx context.Context) (topicStreamReader, error) {
+func (r *readerReconnector) stream(ctx context.Context) (streamReader, error) {
 	var err error
 	var connectionChan chan struct{}
 	r.m.WithRLock(func() {
@@ -201,7 +201,7 @@ func (r *readerReconnector) stream(ctx context.Context) (topicStreamReader, erro
 	case <-r.background.Done():
 		return nil, r.closedErr
 	case <-connectionChan:
-		var reader topicStreamReader
+		var reader streamReader
 		r.m.WithRLock(func() {
 			reader = r.streamVal
 			err = r.streamErr

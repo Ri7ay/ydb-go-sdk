@@ -18,7 +18,7 @@ func TestReader_Close(t *testing.T) {
 
 	testErr := errors.New("test error")
 	readerContext, readerCancel := context.WithCancel(context.Background())
-	baseReader := NewMocktopicStreamReader(mc)
+	baseReader := NewMockstreamReader(mc)
 	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), ReadMessageBatchOptions{}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 	}).Return(nil, testErr)
@@ -113,7 +113,7 @@ func TestReader_Commit(t *testing.T) {
 	mc := gomock.NewController(t)
 	defer mc.Finish()
 
-	baseReader := NewMocktopicStreamReader(mc)
+	baseReader := NewMockstreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{{
@@ -138,7 +138,7 @@ func TestReader_CommitBatch(t *testing.T) {
 	mc := gomock.NewController(t)
 	defer mc.Finish()
 
-	baseReader := NewMocktopicStreamReader(mc)
+	baseReader := NewMockstreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{{
@@ -163,7 +163,7 @@ func TestReader_CommitMessages(t *testing.T) {
 	mc := gomock.NewController(t)
 	defer mc.Finish()
 
-	baseReader := NewMocktopicStreamReader(mc)
+	baseReader := NewMockstreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{
