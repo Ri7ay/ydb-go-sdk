@@ -58,9 +58,33 @@ func TestBatcher_GetBatch(t *testing.T) {
 		b := newBatcher()
 		require.NoError(t, b.Add(&batch))
 
-		res, err := b.Get(ctx)
+		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, batch, res)
+	})
+
+	t.Run("SimpleOneOfTwo", func(t *testing.T) {
+		ctx := context.Background()
+		session1 := &PartitionSession{}
+		session2 := &PartitionSession{}
+		batch, err := newBatch(session1, []Message{{WrittenAt: testTime(1), PartitionSession: session1}})
+		batch2, err := newBatch(session2, []Message{{WrittenAt: testTime(2), PartitionSession: session2}})
+		require.NoError(t, err)
+
+		b := newBatcher()
+		require.NoError(t, b.Add(&batch))
+		require.NoError(t, b.Add(&batch2))
+
+		res, err := b.Get(ctx, batcherGetOptions{})
+		require.NoError(t, err)
+		require.Contains(t, []Batch{batch, batch2}, res)
+		require.Len(t, b.messages, 1)
+
+		res2, err := b.Get(ctx, batcherGetOptions{})
+		require.NoError(t, err)
+		require.Contains(t, []Batch{batch, batch2}, res2)
+		require.NotEqual(t, res, res2)
+		require.Empty(t, b.messages)
 	})
 
 	t.Run("GetAfterPut", func(t *testing.T) {
@@ -75,8 +99,35 @@ func TestBatcher_GetBatch(t *testing.T) {
 			_ = b.Add(&batch)
 		}()
 
-		res, err := b.Get(ctx)
+		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, batch, res)
+		require.Empty(t, b.messages)
+	})
+
+	t.Run("GetMaxOne", func(t *testing.T) {
+		ctx := context.Background()
+
+		m1 := Message{WrittenAt: testTime(1)}
+		m2 := Message{WrittenAt: testTime(2)}
+		batch, err := newBatch(nil, []Message{m1, m2})
+		require.NoError(t, err)
+
+		b := newBatcher()
+		require.NoError(t, b.Add(&batch))
+
+		res, err := b.Get(ctx, batcherGetOptions{MaxCount: 1})
+		require.NoError(t, err)
+
+		expectedBatch, err := newBatch(nil, []Message{m1})
+		require.Equal(t, expectedBatch, res)
+
+		expectedRestBatch, err := newBatch(nil, []Message{m2})
+		require.NoError(t, err)
+
+		expectedMessages := batcherMessagesMap{
+			nil: expectedRestBatch,
+		}
+		require.Equal(t, expectedMessages, b.messages)
 	})
 }

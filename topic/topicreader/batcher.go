@@ -14,7 +14,7 @@ type topicPartitionSessionID struct {
 type batcher struct {
 	m        xsync.Mutex
 	messages batcherMessagesMap
-	waiters  []getBatchOptions
+	waiters  []batcherWaiter
 }
 
 type batcherMessagesMap map[*PartitionSession]Batch
@@ -29,6 +29,10 @@ func (b *batcher) Add(batch *Batch) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
+	return b.addNeedLock(batch)
+}
+
+func (b *batcher) addNeedLock(batch *Batch) error {
 	var currentBatch Batch
 	var ok bool
 	if currentBatch, ok = b.messages[batch.partitionSession]; ok {
@@ -40,16 +44,23 @@ func (b *batcher) Add(batch *Batch) error {
 	}
 
 	b.messages[batch.partitionSession] = currentBatch
+
+	b.fireWaitersNeedLock()
+
 	return nil
 }
 
-func (b *batcher) Get(ctx context.Context) (Batch, error) {
-	res, ok := b.getNeedLock()
+type batcherGetOptions struct {
+	MaxCount int
+}
+
+func (b *batcher) Get(ctx context.Context, opts batcherGetOptions) (Batch, error) {
+	res, ok := b.get(opts)
 	if ok {
 		return res, nil
 	}
 
-	resChan := b.createWaiter()
+	resChan := b.createWaiter(opts)
 	select {
 	case res = <-resChan:
 		return res, nil
@@ -58,25 +69,36 @@ func (b *batcher) Get(ctx context.Context) (Batch, error) {
 	}
 }
 
-func (b *batcher) get() (Batch, bool) {
+func (b *batcher) get(opts batcherGetOptions) (Batch, bool) {
 	b.m.Lock()
 	defer b.m.Unlock()
 
-	return b.getNeedLock()
+	return b.getNeedLock(opts)
 }
 
-func (b *batcher) getNeedLock() (Batch, bool) {
+func (b *batcher) getNeedLock(opts batcherGetOptions) (Batch, bool) {
 	for k, v := range b.messages {
-		delete(b.messages, k)
-		return v, true
+		if opts.MaxCount > 0 {
+			head, rest := v.cutMessages(opts.MaxCount)
+			if rest.isEmpty() {
+				delete(b.messages, k)
+			} else {
+				b.messages[k] = rest
+			}
+			return head, true
+		} else {
+			delete(b.messages, k)
+			return v, true
+		}
 	}
 
 	return Batch{}, false
 }
 
-func (b *batcher) createWaiter() <-chan Batch {
+func (b *batcher) createWaiter(opts batcherGetOptions) <-chan Batch {
 	waiter := batcherWaiter{
-		Result: make(chan Batch),
+		Options: opts,
+		Result:  make(chan Batch),
 	}
 
 	b.m.WithLock(func() {
@@ -86,12 +108,34 @@ func (b *batcher) createWaiter() <-chan Batch {
 	return waiter.Result
 }
 
-func (b *batcher) fireWaiters() {
-	b.m.WithLock(func() {
-		if len(b.waiters)
-	})
+func (b *batcher) fireWaitersNeedLock() {
+	if len(b.waiters) == 0 {
+		return
+	}
+
+	waiter := b.waiters[0]
+
+	res, ok := b.get(waiter.Options)
+	if !ok {
+		return
+	}
+
+	copy(b.waiters, b.waiters[1:])
+	b.waiters = b.waiters[:len(b.waiters)-1]
+
+	select {
+	case waiter.Result <- res:
+		return
+	default:
+		_ = b.addNeedLock(&res)
+	}
+}
+
+func (b *batcher) pubBatchNeedLock(batch Batch) {
+	b.messages[batch.partitionSession] = batch
 }
 
 type batcherWaiter struct {
-	Result chan Batch
+	Options batcherGetOptions
+	Result  chan Batch
 }

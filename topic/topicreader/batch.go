@@ -99,3 +99,17 @@ func (m *Batch) extendFromBatch(b *Batch) error {
 	m.ToOffset = b.ToOffset
 	return nil
 }
+
+func (m *Batch) cutMessages(count int) (head, rest Batch) {
+	if count >= len(m.Messages) {
+		return *m, Batch{}
+	}
+
+	head, _ = newBatch(m.partitionSession, m.Messages[:count])
+	rest, _ = newBatch(m.partitionSession, m.Messages[count:])
+	return head, rest
+}
+
+func (m *Batch) isEmpty() bool {
+	return len(m.Messages) == 0
+}
