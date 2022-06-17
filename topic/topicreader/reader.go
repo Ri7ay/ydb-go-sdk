@@ -33,8 +33,12 @@ type Reader struct {
 	background            backgroundworkers.BackgroundWorker
 }
 
-type ReadMessageBatchOptions struct {
-	maxMessages int
+type readMessageBatchOptions struct {
+	batcherGetOptions
+}
+
+func newReadMessageBatchOptions() readMessageBatchOptions {
+	return readMessageBatchOptions{}
 }
 
 func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...ReaderOption) *Reader {
@@ -69,7 +73,8 @@ func (r *Reader) Close() error {
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (*Batch, error) {
-	var readOptions ReadMessageBatchOptions
+	readOptions := newReadMessageBatchOptions()
+
 	for _, optFunc := range opts {
 		optFunc(&readOptions)
 	}
@@ -93,7 +98,7 @@ forReadBatch:
 }
 
 // ReadBatchOption для различных пожеланий к батчу вроде WithMaxMessages(int)
-type ReadBatchOption func(options *ReadMessageBatchOptions)
+type ReadBatchOption func(options *readMessageBatchOptions)
 
 type ReadSelector struct {
 	Stream     scheme.Path
@@ -110,14 +115,15 @@ func (s ReadSelector) clone() ReadSelector {
 	return dst
 }
 
-func ReadMaxMessagesCount(count int) ReadBatchOption {
-	return func(options *ReadMessageBatchOptions) {
-		options.maxMessages = count
+func ReadExplicitMessagesCount(count int) ReadBatchOption {
+	return func(options *readMessageBatchOptions) {
+		options.MinCount = count
+		options.MaxCount = count
 	}
 }
 
 func (r *Reader) ReadMessage(ctx context.Context) (*Message, error) {
-	res, err := r.ReadMessageBatch(ctx, ReadMaxMessagesCount(1))
+	res, err := r.ReadMessageBatch(ctx, ReadExplicitMessagesCount(1))
 	if err != nil {
 		return nil, err
 	}

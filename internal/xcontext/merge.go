@@ -15,17 +15,15 @@ func Merge(c ...context.Context) (context.Context, CancelErrFunc) {
 		done:            make(chan struct{}),
 		stopDoneWaiter:  make(chan struct{}),
 		doneCloseLocker: new(int32),
+		doneChannels:    make([]<-chan struct{}, len(c)),
 	}
 
 	// finalizer need for prevent goroutine leak if nobody cancel child process
 	runtime.SetFinalizer(res, mergeContextFinalizer)
 
-	doneChannels := make([]<-chan struct{}, len(c))
 	for i := range c {
-		doneChannels[i] = c[i].Done()
+		res.doneChannels[i] = c[i].Done()
 	}
-
-	go waitFirstOfChannels(doneChannels, res.stopDoneWaiter, res.doneCloseLocker, res.done)
 
 	return res, res.cancel
 }
@@ -35,6 +33,7 @@ type mergeContext struct {
 	stopDoneWaiter      chan struct{}
 	done                chan struct{}
 	doneCloseLocker     *int32
+	doneChannels        []<-chan struct{}
 	startDoneWaiterOnce sync.Once
 
 	m      sync.Mutex
@@ -57,6 +56,10 @@ func (m *mergeContext) Deadline() (deadline time.Time, ok bool) {
 }
 
 func (m *mergeContext) Done() <-chan struct{} {
+	m.startDoneWaiterOnce.Do(func() {
+		go waitFirstOfChannels(m.doneChannels, m.stopDoneWaiter, m.doneCloseLocker, m.done)
+	})
+
 	return m.done
 }
 

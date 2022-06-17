@@ -20,7 +20,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		baseReader := NewMockstreamReader(mc)
 
-		opts := ReadMessageBatchOptions{maxMessages: 10}
+		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 		batch := &Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
@@ -40,7 +40,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		defer mc.Finish()
 
 		baseReader := NewMockstreamReader(mc)
-		opts := ReadMessageBatchOptions{maxMessages: 10}
+		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 		batch := &Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
@@ -69,7 +69,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		mc := gomock.NewController(t)
 		defer mc.Finish()
 
-		opts := ReadMessageBatchOptions{maxMessages: 10}
+		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 
 		baseReader1 := NewMockstreamReader(mc)
 		baseReader1.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).Return(nil, xerrors.Retryable(errors.New("test1")))
@@ -112,7 +112,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			reconnector := &readerReconnector{}
 			reconnector.initChannels()
 
-			_, err := reconnector.ReadMessageBatch(cancelledCtx, ReadMessageBatchOptions{})
+			_, err := reconnector.ReadMessageBatch(cancelledCtx, readMessageBatchOptions{})
 			require.ErrorIs(t, err, context.Canceled)
 		}
 	})
@@ -125,7 +125,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			reconnector.Close(context.Background(), testErr)
 		}()
 
-		_, err := reconnector.ReadMessageBatch(context.Background(), ReadMessageBatchOptions{})
+		_, err := reconnector.ReadMessageBatch(context.Background(), readMessageBatchOptions{})
 		require.ErrorIs(t, err, testErr)
 	})
 }

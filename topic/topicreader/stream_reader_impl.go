@@ -33,7 +33,7 @@ type topicStreamReaderImpl struct {
 	sessionController pumpSessionController
 
 	readResponsesParseSignal chan struct{}
-	messageBatches           chan *Batch
+	batcher                  *batcher
 
 	m             xsync.RWMutex
 	err           error
@@ -85,7 +85,7 @@ func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*to
 		stream:                   stream,
 		cancel:                   cancel,
 		readResponsesParseSignal: make(chan struct{}, 1),
-		messageBatches:           make(chan *Batch),
+		batcher:                  newBatcher(),
 	}
 	res.sessionController.init(res.ctx, res)
 	res.freeBytes <- cfg.ProtoBufferSize
@@ -96,27 +96,15 @@ func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*to
 	return nil, err
 }
 
-func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (*Batch, error) {
-	// TODO: handle opts
+func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (*Batch, error) {
+	ctx, cancel := xcontext.Merge(ctx, r.ctx)
+	defer cancel(errors.New("ydb: topic stream read message batch competed"))
 
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	batch, err := r.batcher.Get(ctx, opts.batcherGetOptions)
+	if err == nil {
+		return &batch, nil
 	}
-	if r.ctx.Err() != nil {
-		return nil, r.ctx.Err()
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-
-	case <-r.ctx.Done():
-		return nil, r.ctx.Err()
-
-	case batch := <-r.messageBatches:
-		// TODO: Send  reeBytes to server
-		return batch, nil
-	}
+	return nil, err
 }
 
 func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) error {
@@ -273,7 +261,7 @@ func (r *topicStreamReaderImpl) dataParseLoop() {
 				// buffer is empty, need wait new message
 				break consumeReadResponseBuffer
 			} else {
-				r.dataParse(resp)
+				r.readResponse(resp)
 			}
 		}
 	}
@@ -313,25 +301,28 @@ func (r *topicStreamReaderImpl) getFirstReadResponse() (res *rawtopicreader.Read
 	return res
 }
 
-func (r *topicStreamReaderImpl) dataParse(mess *rawtopicreader.ReadResponse) {
+func (r *topicStreamReaderImpl) readResponse(mess *rawtopicreader.ReadResponse) {
 	batchesCount := 0
 	for i := range mess.PartitionData {
 		batchesCount += len(mess.PartitionData[i].Batches)
 	}
 
-	doneChannel := r.ctx.Done()
 	for pIndex := range mess.PartitionData {
 		p := &mess.PartitionData[pIndex]
 		session := &PartitionSession{
 			PartitionID: -1,
 			ID:          p.PartitionSessionID,
 		}
+
 		for bIndex := range p.Batches {
-			select {
-			case r.messageBatches <- NewBatchFromStream(context.TODO(), "topic-todo", session, p.Batches[bIndex]):
-				// pass
-			case <-doneChannel:
+			if r.ctx.Err() != nil {
 				return
+			}
+
+			batch := NewBatchFromStream(context.TODO(), "topic-todo", session, p.Batches[bIndex])
+			err := r.batcher.Add(batch)
+			if err != nil {
+				r.Close(context.Background(), err)
 			}
 		}
 	}
@@ -535,6 +526,7 @@ func (c *pumpSessionController) onPartitionStatusResponse(m *rawtopicreader.Part
 }
 
 func TestCreatePump(ctx context.Context, stream ReaderStream, cred credentials.Credentials) (*topicStreamReaderImpl, error) {
+	// TODO: remove
 	cfg := newTopicStreamReaderConfig()
 	cfg.BaseContext = ctx
 	cfg.Cred = cred

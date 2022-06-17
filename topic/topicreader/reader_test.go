@@ -19,10 +19,10 @@ func TestReader_Close(t *testing.T) {
 	testErr := errors.New("test error")
 	readerContext, readerCancel := context.WithCancel(context.Background())
 	baseReader := NewMockstreamReader(mc)
-	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), ReadMessageBatchOptions{}).Do(func(_, _ interface{}) {
+	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), readMessageBatchOptions{}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 	}).Return(nil, testErr)
-	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), ReadMessageBatchOptions{maxMessages: 1}).Do(func(_, _ interface{}) {
+	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 1, MinCount: 1}}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 		return
 	}).Return(nil, testErr)

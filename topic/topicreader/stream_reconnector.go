@@ -50,7 +50,7 @@ func newReaderReconnector(connectCtx context.Context, connector readerConnectFun
 	return res
 }
 
-func (r *readerReconnector) ReadMessageBatch(ctx context.Context, opts ReadMessageBatchOptions) (*Batch, error) {
+func (r *readerReconnector) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (*Batch, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}

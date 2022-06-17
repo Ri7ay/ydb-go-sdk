@@ -1,44 +1,10 @@
 package topicreader_test
 
 import (
-	"context"
-	"io"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
-	"google.golang.org/grpc"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
-
-func TestOneThreadLocalDB(t *testing.T) {
-	ctx := context.Background()
-	// TODO: Fix connection string to env
-	db, err := ydb.Open(ctx, "grpc://localhost:2136?database=/local")
-	defer func() { _ = db.Close(ctx) }()
-	require.NoError(t, err)
-
-	grpcConn := db.(grpc.ClientConnInterface)
-	pqClient := Ydb_PersQueue_V12.NewPersQueueServiceClient(grpcConn)
-	grpcStream, err := pqClient.StreamingRead(ctx)
-	require.NoError(t, err)
-
-	pump, err := topicreader.TestCreatePump(ctx, rawtopicreader.StreamReader{Stream: grpcStream}, credentials.NewAnonymousCredentials())
-	require.NoError(t, err)
-	batch, err := pump.ReadMessageBatch(ctx, topicreader.ReadMessageBatchOptions{})
-	require.NoError(t, err)
-	for _, mess := range batch.Messages {
-		data, err := io.ReadAll(mess.Data)
-		require.NoError(t, err)
-		t.Log(string(data))
-	}
-	require.NoError(t, pump.Commit(ctx, topicreader.CommitBatch{batch.GetCommitOffset()}))
-}
 
 func BenchmarkMassCommit(b *testing.B) {
 	source := make([]topicreader.Message, 10000)

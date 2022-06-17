@@ -51,7 +51,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 	}, nil
 }
 
-func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb rawtopicreader.Batch) *Batch {
+func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb rawtopicreader.Batch) Batch {
 	var res Batch
 	res.Messages = make([]Message, len(sb.MessageData))
 	res.partitionContext = batchContext
@@ -78,7 +78,7 @@ func NewBatchFromStream(batchContext context.Context, stream string, session *Pa
 		messData.WrittenAt = sb.WrittenAt
 	}
 
-	return &res
+	return res
 }
 
 func (m Batch) Context() context.Context {
