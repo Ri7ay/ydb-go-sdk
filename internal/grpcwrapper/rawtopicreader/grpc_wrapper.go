@@ -16,20 +16,14 @@ type (
 	SupportedCodecs []rawtopic.Codec
 )
 
-type PartitionSessionID struct {
-	v int64
-}
-
-func (id PartitionSessionID) Less(other PartitionSessionID) bool {
-	return id.v < other.v
-}
+type PartitionSessionID int64
 
 func (id *PartitionSessionID) FromInt64(v int64) {
-	id.v = v
+	*id = PartitionSessionID(v)
 }
 
 func (id PartitionSessionID) ToInt64() int64 {
-	return id.v
+	return int64(id)
 }
 
 type Offset int64

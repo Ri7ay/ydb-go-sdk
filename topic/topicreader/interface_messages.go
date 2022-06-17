@@ -30,6 +30,7 @@ type SizeReader interface {
 type MessageData struct { // Данные для записи. Так же эмбедятся в чтение
 	SeqNo     int64
 	CreatedAt time.Time
+	WrittenAt time.Time
 
 	Data io.Reader
 }
@@ -84,6 +85,11 @@ type Message struct {
 	ctx context.Context // для отслеживания смерти assign
 }
 
+func (m Message) withCommitOffset(offsets CommitOffset) Message {
+	m.CommitOffset = offsets
+	return m
+}
+
 var (
 	_ CommitableByOffset = Message{}
 	_ CommitableByOffset = CommitOffset{}
@@ -102,56 +108,6 @@ func (c CommitOffset) GetCommitOffset() CommitOffset {
 
 func (m Message) Context() context.Context {
 	return m.ctx
-}
-
-type Batch struct {
-	Messages       []Message
-	WriteTimestamp time.Time
-
-	CommitOffset // от всех сообщений батча
-
-	sizeBytes                        int
-	partitionContext                 context.Context // один на все сообщения
-	partitionGracefulShutdownChannel <-chan struct{}
-}
-
-func NewBatchFromStream(batchContext context.Context, stream string, session *PartitionSession, sb rawtopicreader.Batch) *Batch {
-	var res Batch
-	res.WriteTimestamp = sb.WrittenAt
-	res.Messages = make([]Message, len(sb.MessageData))
-	res.partitionContext = batchContext
-
-	if len(sb.MessageData) > 0 {
-		commitOffset := &res.CommitOffset
-		commitOffset.partitionSessionID = session.ID
-		commitOffset.Offset = sb.MessageData[0].Offset
-		commitOffset.ToOffset = sb.MessageData[len(sb.MessageData)-1].Offset + 1
-	}
-
-	for i := range sb.MessageData {
-		sMess := &sb.MessageData[i]
-
-		cMess := &res.Messages[i]
-		cMess.Stream = stream
-		cMess.PartitionSession = session
-		cMess.ctx = batchContext
-
-		messData := &cMess.MessageData
-		messData.SeqNo = sMess.SeqNo
-		messData.CreatedAt = sMess.CreatedAt
-		messData.Data = createReader(sb.Codec, sMess.Data)
-		res.sizeBytes += len(sMess.Data)
-	}
-
-	return &res
-}
-
-func (m Batch) Context() context.Context {
-	return m.partitionContext
-}
-
-func (m *Batch) PartitionSession() *PartitionSession {
-	panic("not implemented")
 }
 
 var _ CommitableByOffset = Batch{}

@@ -1,6 +1,7 @@
 package xerrors
 
 import (
+	"errors"
 	"runtime"
 	"strconv"
 	"strings"
@@ -11,6 +12,10 @@ type withStackTraceOptions struct {
 }
 
 type withStackTraceOption func(o *withStackTraceOptions)
+
+func NewWithStackTrace(text string) error {
+	return WithStackTrace(errors.New(text), WithSkipDepth(1))
+}
 
 func WithSkipDepth(skipDepth int) withStackTraceOption {
 	return func(o *withStackTraceOptions) {

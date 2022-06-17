@@ -56,9 +56,9 @@ func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
 	sort.Slice(commits, func(i, j int) bool {
 		cI, cJ := &commits[i], &commits[j]
 		switch {
-		case cI.partitionSessionID.Less(cJ.partitionSessionID):
+		case cI.partitionSessionID < cJ.partitionSessionID:
 			return true
-		case cJ.partitionSessionID.Less(cI.partitionSessionID):
+		case cJ.partitionSessionID < cI.partitionSessionID:
 			return false
 		case cI.Offset < cJ.Offset:
 			return true

@@ -114,7 +114,7 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts ReadM
 		return nil, r.ctx.Err()
 
 	case batch := <-r.messageBatches:
-		r.freeBytes <- batch.sizeBytes
+		// TODO: Send  reeBytes to server
 		return batch, nil
 	}
 }
