@@ -9,7 +9,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
-func TestBatcher_AddBatch(t *testing.T) {
+func TestBatcher_PushBatch(t *testing.T) {
 	session1 := &PartitionSession{}
 	session2 := &PartitionSession{}
 
@@ -35,9 +35,9 @@ func TestBatcher_AddBatch(t *testing.T) {
 	batch3 := mustNewBatch(session2, []Message{m22})
 
 	b := newBatcher()
-	require.NoError(t, b.AddBatch(batch1))
-	require.NoError(t, b.AddBatch(batch2))
-	require.NoError(t, b.AddBatch(batch3))
+	require.NoError(t, b.PushBatch(batch1))
+	require.NoError(t, b.PushBatch(batch2))
+	require.NoError(t, b.PushBatch(batch3))
 
 	expectedSession1 := newBatcherItemBatch(mustNewBatch(session1, []Message{m11, m12}))
 	expectedSession2 := newBatcherItemBatch(mustNewBatch(session2, []Message{m21, m22}))
@@ -49,29 +49,69 @@ func TestBatcher_AddBatch(t *testing.T) {
 	require.Equal(t, expected, b.messages)
 }
 
-func TestBatcher_AddRawMessage(t *testing.T) {
+func TestBatcher_PushRawMessage(t *testing.T) {
 	t.Run("Empty", func(t *testing.T) {
 		b := newBatcher()
 		session := &PartitionSession{}
 		m := &rawtopicreader.StopPartitionSessionRequest{
 			PartitionSessionID: 1,
 		}
-		require.NoError(t, b.AddRawMessage(session, m))
+		require.NoError(t, b.PushRawMessage(session, m))
 
 		expectedMap := batcherMessagesMap{session: batcherMessageOrderItems{newBatcherItemRawMessage(m)}}
 		require.Equal(t, expectedMap, b.messages)
 	})
+	t.Run("AddRawAfterBatch", func(t *testing.T) {
+		b := newBatcher()
+		session := &PartitionSession{}
+		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
+		m := &rawtopicreader.StopPartitionSessionRequest{
+			PartitionSessionID: 1,
+		}
+
+		require.NoError(t, b.PushBatch(batch))
+		require.NoError(t, b.PushRawMessage(session, m))
+
+		expectedMap := batcherMessagesMap{session: batcherMessageOrderItems{
+			newBatcherItemBatch(batch),
+			newBatcherItemRawMessage(m),
+		}}
+		require.Equal(t, expectedMap, b.messages)
+	})
+
+	t.Run("AddBatchRawBatchBatch", func(t *testing.T) {
+		b := newBatcher()
+		session := &PartitionSession{}
+		batch1 := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
+		batch2 := mustNewBatch(session, []Message{{WrittenAt: testTime(2)}})
+		batch3 := mustNewBatch(session, []Message{{WrittenAt: testTime(3)}})
+		m := &rawtopicreader.StopPartitionSessionRequest{
+			PartitionSessionID: 1,
+		}
+
+		require.NoError(t, b.PushBatch(batch1))
+		require.NoError(t, b.PushRawMessage(session, m))
+		require.NoError(t, b.PushBatch(batch2))
+		require.NoError(t, b.PushBatch(batch3))
+
+		expectedMap := batcherMessagesMap{session: batcherMessageOrderItems{
+			newBatcherItemBatch(batch1),
+			newBatcherItemRawMessage(m),
+			newBatcherItemBatch(mustNewBatch(session, []Message{{WrittenAt: testTime(2)}, {WrittenAt: testTime(3)}})),
+		}}
+		require.Equal(t, expectedMap, b.messages)
+	})
 }
 
-func TestBatcher_GetBatch(t *testing.T) {
+func TestBatcher_Pop(t *testing.T) {
 	t.Run("SimpleGet", func(t *testing.T) {
 		ctx := context.Background()
 		batch := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
 
 		b := newBatcher()
-		require.NoError(t, b.AddBatch(batch))
+		require.NoError(t, b.PushBatch(batch))
 
-		res, err := b.Get(ctx, batcherGetOptions{})
+		res, err := b.Pop(ctx, batcherGetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, newBatcherItemBatch(batch), res)
 	})
@@ -84,17 +124,17 @@ func TestBatcher_GetBatch(t *testing.T) {
 		batch2 := mustNewBatch(session2, []Message{{WrittenAt: testTime(2), PartitionSession: session2}})
 
 		b := newBatcher()
-		require.NoError(t, b.AddBatch(batch))
-		require.NoError(t, b.AddBatch(batch2))
+		require.NoError(t, b.PushBatch(batch))
+		require.NoError(t, b.PushBatch(batch2))
 
 		possibleResults := []batcherMessageOrderItem{newBatcherItemBatch(batch), newBatcherItemBatch(batch2)}
 
-		res, err := b.Get(ctx, batcherGetOptions{})
+		res, err := b.Pop(ctx, batcherGetOptions{})
 		require.NoError(t, err)
 		require.Contains(t, possibleResults, res)
 		require.Len(t, b.messages, 1)
 
-		res2, err := b.Get(ctx, batcherGetOptions{})
+		res2, err := b.Pop(ctx, batcherGetOptions{})
 		require.NoError(t, err)
 		require.Contains(t, possibleResults, res2)
 		require.NotEqual(t, res, res2)
@@ -109,10 +149,10 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 		go func() {
 			time.Sleep(time.Millisecond)
-			_ = b.AddBatch(batch)
+			_ = b.PushBatch(batch)
 		}()
 
-		res, err := b.Get(ctx, batcherGetOptions{})
+		res, err := b.Pop(ctx, batcherGetOptions{})
 		require.NoError(t, err)
 		require.Equal(t, newBatcherItemBatch(batch), res)
 		require.Empty(t, b.messages)
@@ -126,9 +166,9 @@ func TestBatcher_GetBatch(t *testing.T) {
 		batch := mustNewBatch(nil, []Message{m1, m2})
 
 		b := newBatcher()
-		require.NoError(t, b.AddBatch(batch))
+		require.NoError(t, b.PushBatch(batch))
 
-		res, err := b.Get(ctx, batcherGetOptions{MaxCount: 1})
+		res, err := b.Pop(ctx, batcherGetOptions{MaxCount: 1})
 		require.NoError(t, err)
 
 		expectedResult := newBatcherItemBatch(mustNewBatch(nil, []Message{m1}))
@@ -153,7 +193,7 @@ func TestBatcher_Find(t *testing.T) {
 
 		b := newBatcher()
 
-		require.NoError(t, b.AddBatch(batch))
+		require.NoError(t, b.PushBatch(batch))
 
 		findRes := b.findNeedLock(batcherWaiter{})
 		expectedResult := batcherResultCandidate{
@@ -172,7 +212,7 @@ func TestBatcher_Find(t *testing.T) {
 
 		b := newBatcher()
 
-		require.NoError(t, b.AddBatch(batch))
+		require.NoError(t, b.PushBatch(batch))
 
 		findRes := b.findNeedLock(batcherWaiter{Options: batcherGetOptions{MaxCount: 1}})
 

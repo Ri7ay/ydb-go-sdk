@@ -112,7 +112,7 @@ func (r *topicStreamReaderImpl) consumeMessagesUntilBatch(
 	ctx context.Context,
 	opts readMessageBatchOptions,
 ) (Batch, error) {
-	item, err := r.batcher.Get(ctx, opts.batcherGetOptions)
+	item, err := r.batcher.Pop(ctx, opts.batcherGetOptions)
 	if err != nil {
 		return Batch{}, err
 	}
@@ -332,7 +332,7 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 	}
 
 	for i := range batches {
-		if err := r.batcher.AddBatch(batches[i]); err != nil {
+		if err := r.batcher.PushBatch(batches[i]); err != nil {
 			return err
 		}
 	}

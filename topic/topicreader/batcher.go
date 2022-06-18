@@ -39,14 +39,14 @@ func newBatcher() *batcher {
 	}
 }
 
-func (b *batcher) AddBatch(batch Batch) error {
+func (b *batcher) PushBatch(batch Batch) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
 	return b.addNeedLock(batch.partitionSession, newBatcherItemBatch(batch))
 }
 
-func (b *batcher) AddRawMessage(session *PartitionSession, m rawtopicreader.ServerMessage) error {
+func (b *batcher) PushRawMessage(session *PartitionSession, m rawtopicreader.ServerMessage) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
@@ -117,7 +117,7 @@ func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
 	return head, rest, true
 }
 
-func (b *batcher) Get(ctx context.Context, opts batcherGetOptions) (batcherMessageOrderItem, error) {
+func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (batcherMessageOrderItem, error) {
 	var findRes batcherResultCandidate
 	b.m.WithLock(func() {
 		findRes = b.findNeedLock(batcherWaiter{Options: opts})
