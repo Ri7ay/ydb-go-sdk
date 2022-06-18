@@ -179,6 +179,32 @@ func TestBatcher_Pop(t *testing.T) {
 		}
 		require.Equal(t, expectedMessages, b.messages)
 	})
+
+	t.Run("GetFirstMessageFromSameSession", func(t *testing.T) {
+		b := newBatcher()
+		batch := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
+		require.NoError(t, b.PushBatch(batch))
+		require.NoError(t, b.PushRawMessage(nil, &rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: 1}))
+
+		res, err := b.Pop(context.Background(), batcherGetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, newBatcherItemBatch(batch), res)
+	})
+
+	t.Run("PreferFirstRawMessageFromDifferentSessions", func(t *testing.T) {
+		session1 := &PartitionSession{}
+		session2 := &PartitionSession{}
+
+		b := newBatcher()
+		m := &rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: 1}
+
+		require.NoError(t, b.PushBatch(mustNewBatch(session1, []Message{{WrittenAt: testTime(1)}})))
+		require.NoError(t, b.PushRawMessage(session2, m))
+
+		res, err := b.Pop(context.Background(), batcherGetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, newBatcherItemRawMessage(m), res)
+	})
 }
 
 func TestBatcher_Find(t *testing.T) {

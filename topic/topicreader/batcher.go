@@ -73,11 +73,16 @@ func (b *batcher) addNeedLock(session *PartitionSession, item batcherMessageOrde
 }
 
 type batcherGetOptions struct {
-	MinCount int
-	MaxCount int
+	MinCount        int
+	MaxCount        int
+	rawMessagesOnly bool
 }
 
-func (o batcherGetOptions) cutItemsHead(items batcherMessageOrderItems) (head batcherMessageOrderItem, rest batcherMessageOrderItems, ok bool) {
+func (o batcherGetOptions) cutBatchItemsHead(items batcherMessageOrderItems) (
+	head batcherMessageOrderItem,
+	rest batcherMessageOrderItems,
+	ok bool,
+) {
 	notFound := func() (batcherMessageOrderItem, batcherMessageOrderItems, bool) {
 		return batcherMessageOrderItem{}, batcherMessageOrderItems{}, false
 	}
@@ -86,6 +91,10 @@ func (o batcherGetOptions) cutItemsHead(items batcherMessageOrderItems) (head ba
 	}
 
 	if items[0].IsBatch() {
+		if o.rawMessagesOnly {
+			return notFound()
+		}
+
 		batchHead, batchRest, ok := o.splitBatch(items[0].Batch)
 
 		if !ok {
@@ -97,7 +106,7 @@ func (o batcherGetOptions) cutItemsHead(items batcherMessageOrderItems) (head ba
 		return head, rest, true
 	}
 
-	panic("not implemented")
+	return items[0], items[1:], true
 }
 
 func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
@@ -189,32 +198,50 @@ type batcherResultCandidate struct {
 	Ok          bool
 }
 
+func newBatcherResultCandidate(key *PartitionSession, result batcherMessageOrderItem, rest batcherMessageOrderItems, waiterIndex int, ok bool) batcherResultCandidate {
+	return batcherResultCandidate{
+		Key:         key,
+		Result:      result,
+		Rest:        rest,
+		WaiterIndex: waiterIndex,
+		Ok:          ok,
+	}
+}
+
 func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate {
 	if len(waiters) == 0 || len(b.messages) == 0 {
 		return batcherResultCandidate{}
 	}
 
+	rawMessageOpts := batcherGetOptions{rawMessagesOnly: true}
+
+	var batchResult batcherResultCandidate
+	needBatchResult := true
+
 	for k, items := range b.messages {
-		for waiterIndex, waiter := range waiters {
-			head, rest, ok := waiter.Options.cutItemsHead(items)
-			if !ok {
-				continue
-			}
-			return batcherResultCandidate{
-				Key:         k,
-				Result:      head,
-				Rest:        rest,
-				WaiterIndex: waiterIndex,
-				Ok:          true,
+		head, rest, ok := rawMessageOpts.cutBatchItemsHead(items)
+		if ok {
+			return newBatcherResultCandidate(k, head, rest, -1, true)
+		}
+
+		if needBatchResult {
+			for waiterIndex, waiter := range waiters {
+				head, rest, ok := waiter.Options.cutBatchItemsHead(items)
+				if !ok {
+					continue
+				}
+
+				needBatchResult = false
+				batchResult = newBatcherResultCandidate(k, head, rest, waiterIndex, true)
 			}
 		}
 	}
 
-	return batcherResultCandidate{}
+	return batchResult
 }
 
 func (b *batcher) applyNeedLock(res batcherResultCandidate) {
-	if res.Rest.IsEmpty() {
+	if res.Rest.IsEmpty() && res.WaiterIndex >= 0 {
 		delete(b.messages, res.Key)
 	} else {
 		b.messages[res.Key] = res.Rest
