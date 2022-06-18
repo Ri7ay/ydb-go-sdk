@@ -13,13 +13,6 @@ type batcher struct {
 	waiters  []batcherWaiter
 }
 
-type batcherMessagesMap map[*PartitionSession]batcherMessageOrderItem
-
-type batcherMessageOrderItem struct {
-	Batch      Batch
-	RawMessage rawtopicreader.ServerMessage
-}
-
 func newBatcherItemBatch(b Batch) batcherMessageOrderItem {
 	return batcherMessageOrderItem{Batch: b}
 }
@@ -50,22 +43,29 @@ func (b *batcher) AddBatch(batch Batch) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
-	return b.addNeedLock(newBatcherItemBatch(batch))
+	return b.addNeedLock(batch.partitionSession, newBatcherItemBatch(batch))
 }
 
-func (b *batcher) addNeedLock(item batcherMessageOrderItem) error {
-	var currentItem batcherMessageOrderItem
+func (b *batcher) AddRawMessage(session *PartitionSession, m rawtopicreader.ServerMessage) error {
+	b.m.Lock()
+	defer b.m.Unlock()
+
+	return b.addNeedLock(session, newBatcherItemRawMessage(m))
+}
+
+func (b *batcher) addNeedLock(session *PartitionSession, item batcherMessageOrderItem) error {
+	var currentItems batcherMessageOrderItems
 	var ok bool
 	var err error
-	if currentItem, ok = b.messages[item.Batch.partitionSession]; ok {
-		if currentItem.Batch, err = currentItem.Batch.append(item.Batch); err != nil {
+	if currentItems, ok = b.messages[session]; ok {
+		if currentItems, err = currentItems.Append(item); err != nil {
 			return err
 		}
 	} else {
-		currentItem = item
+		currentItems = batcherMessageOrderItems{item}
 	}
 
-	b.messages[item.Batch.partitionSession] = currentItem
+	b.messages[session] = currentItems
 
 	b.fireWaitersNeedLock()
 
@@ -75,6 +75,29 @@ func (b *batcher) addNeedLock(item batcherMessageOrderItem) error {
 type batcherGetOptions struct {
 	MinCount int
 	MaxCount int
+}
+
+func (o batcherGetOptions) cutItemsHead(items batcherMessageOrderItems) (head batcherMessageOrderItem, rest batcherMessageOrderItems, ok bool) {
+	notFound := func() (batcherMessageOrderItem, batcherMessageOrderItems, bool) {
+		return batcherMessageOrderItem{}, batcherMessageOrderItems{}, false
+	}
+	if len(items) == 0 {
+		return notFound()
+	}
+
+	if items[0].IsBatch() {
+		batchHead, batchRest, ok := o.splitBatch(items[0].Batch)
+
+		if !ok {
+			return notFound()
+		}
+
+		head = newBatcherItemBatch(batchHead)
+		rest = items.ReplaceHeadItem(newBatcherItemBatch(batchRest))
+		return head, rest, true
+	}
+
+	panic("not implemented")
 }
 
 func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
@@ -161,7 +184,7 @@ func (b *batcher) removeWaiterNeedLock(index int) batcherWaiter {
 type batcherResultCandidate struct {
 	Key         *PartitionSession
 	Result      batcherMessageOrderItem
-	Rest        batcherMessageOrderItem
+	Rest        batcherMessageOrderItems
 	WaiterIndex int
 	Ok          bool
 }
@@ -171,16 +194,16 @@ func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate 
 		return batcherResultCandidate{}
 	}
 
-	for k, item := range b.messages {
+	for k, items := range b.messages {
 		for waiterIndex, waiter := range waiters {
-			head, rest, ok := waiter.Options.splitBatch(item.Batch)
+			head, rest, ok := waiter.Options.cutItemsHead(items)
 			if !ok {
 				continue
 			}
 			return batcherResultCandidate{
 				Key:         k,
-				Result:      newBatcherItemBatch(head),
-				Rest:        newBatcherItemBatch(rest),
+				Result:      head,
+				Rest:        rest,
 				WaiterIndex: waiterIndex,
 				Ok:          true,
 			}
@@ -196,6 +219,46 @@ func (b *batcher) applyNeedLock(res batcherResultCandidate) {
 	} else {
 		b.messages[res.Key] = res.Rest
 	}
+}
+
+type batcherMessagesMap map[*PartitionSession]batcherMessageOrderItems
+
+type batcherMessageOrderItems []batcherMessageOrderItem
+
+func (items batcherMessageOrderItems) Append(item batcherMessageOrderItem) (batcherMessageOrderItems, error) {
+	if len(items) == 0 {
+		return append(items, item), nil
+	}
+
+	lastItem := &items[len(items)-1]
+	if item.IsBatch() && lastItem.IsBatch() {
+		newItem, err := lastItem.Batch.append(item.Batch)
+		if err != nil {
+			return nil, err
+		}
+		lastItem.Batch = newItem
+		return items, nil
+	}
+
+	return append(items, item), nil
+}
+func (items batcherMessageOrderItems) IsEmpty() bool {
+	return len(items) == 0
+}
+func (items batcherMessageOrderItems) ReplaceHeadItem(item batcherMessageOrderItem) batcherMessageOrderItems {
+	if item.IsEmpty() {
+		return items[1:]
+	}
+
+	res := make(batcherMessageOrderItems, len(items))
+	res[0] = item
+	copy(res[1:], items[1:])
+	return res
+}
+
+type batcherMessageOrderItem struct {
+	Batch      Batch
+	RawMessage rawtopicreader.ServerMessage
 }
 
 type batcherWaiter struct {

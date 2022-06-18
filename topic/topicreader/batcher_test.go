@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
 func TestBatcher_AddBatch(t *testing.T) {
@@ -42,10 +43,24 @@ func TestBatcher_AddBatch(t *testing.T) {
 	expectedSession2 := newBatcherItemBatch(mustNewBatch(session2, []Message{m21, m22}))
 
 	expected := batcherMessagesMap{
-		session1: expectedSession1,
-		session2: expectedSession2,
+		session1: batcherMessageOrderItems{expectedSession1},
+		session2: batcherMessageOrderItems{expectedSession2},
 	}
 	require.Equal(t, expected, b.messages)
+}
+
+func TestBatcher_AddRawMessage(t *testing.T) {
+	t.Run("Empty", func(t *testing.T) {
+		b := newBatcher()
+		session := &PartitionSession{}
+		m := &rawtopicreader.StopPartitionSessionRequest{
+			PartitionSessionID: 1,
+		}
+		require.NoError(t, b.AddRawMessage(session, m))
+
+		expectedMap := batcherMessagesMap{session: batcherMessageOrderItems{newBatcherItemRawMessage(m)}}
+		require.Equal(t, expectedMap, b.messages)
+	})
 }
 
 func TestBatcher_GetBatch(t *testing.T) {
@@ -120,7 +135,7 @@ func TestBatcher_GetBatch(t *testing.T) {
 		require.Equal(t, expectedResult, res)
 
 		expectedMessages := batcherMessagesMap{
-			nil: newBatcherItemBatch(mustNewBatch(nil, []Message{m2})),
+			nil: batcherMessageOrderItems{newBatcherItemBatch(mustNewBatch(nil, []Message{m2}))},
 		}
 		require.Equal(t, expectedMessages, b.messages)
 	})
@@ -144,7 +159,7 @@ func TestBatcher_Find(t *testing.T) {
 		expectedResult := batcherResultCandidate{
 			Key:         session,
 			Result:      newBatcherItemBatch(batch),
-			Rest:        batcherMessageOrderItem{},
+			Rest:        batcherMessageOrderItems{},
 			WaiterIndex: 0,
 			Ok:          true,
 		}
@@ -167,7 +182,7 @@ func TestBatcher_Find(t *testing.T) {
 		expectedCandidate := batcherResultCandidate{
 			Key:         session,
 			Result:      expectedResult,
-			Rest:        expectedRestBatch,
+			Rest:        batcherMessageOrderItems{expectedRestBatch},
 			WaiterIndex: 0,
 			Ok:          true,
 		}
@@ -183,11 +198,11 @@ func TestBatcher_Apply(t *testing.T) {
 		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 		foundRes := batcherResultCandidate{
 			Key:  session,
-			Rest: newBatcherItemBatch(batch),
+			Rest: batcherMessageOrderItems{newBatcherItemBatch(batch)},
 		}
 		b.applyNeedLock(foundRes)
 
-		expectedMap := batcherMessagesMap{session: newBatcherItemBatch(batch)}
+		expectedMap := batcherMessagesMap{session: batcherMessageOrderItems{newBatcherItemBatch(batch)}}
 		require.Equal(t, expectedMap, b.messages)
 	})
 
@@ -199,10 +214,10 @@ func TestBatcher_Apply(t *testing.T) {
 
 		foundRes := batcherResultCandidate{
 			Key:  session,
-			Rest: newBatcherItemBatch(Batch{}),
+			Rest: batcherMessageOrderItems{},
 		}
 
-		b.messages = batcherMessagesMap{session: newBatcherItemBatch(batch)}
+		b.messages = batcherMessagesMap{session: batcherMessageOrderItems{newBatcherItemBatch(batch)}}
 
 		b.applyNeedLock(foundRes)
 
