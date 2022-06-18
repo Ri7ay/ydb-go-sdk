@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
@@ -32,55 +31,26 @@ type MessageData struct { // Данные для записи. Так же эм�
 	CreatedAt time.Time
 	WrittenAt time.Time
 
-	Data io.Reader
-}
-
-type PartitionSession struct {
-	Topic       string
-	ID          rawtopicreader.PartitionSessionID
-	PartitionID int64
-
-	ctx context.Context
-
-	m              sync.Mutex
-	gracefulled    bool
-	gracefulSignal chan struct{}
-	commitedOffset rawtopicreader.Offset
-}
-
-func (s *PartitionSession) graceful(offset rawtopicreader.Offset) error {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	if s.gracefulled {
-		return xerrors.WithStackTrace(errors.New("partition send graceful signal already"))
-	}
-
-	s.gracefulled = true
-	s.commitedOffset = offset
-	close(s.gracefulSignal)
-	return nil
-}
-
-func (s *PartitionSession) CommitedOffset() rawtopicreader.Offset {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	return s.commitedOffset
-}
-
-func (s *PartitionSession) Context() context.Context {
-	return context.TODO()
+	Data               io.Reader
+	rawDataLen         int
+	bufferBytesAccount int
 }
 
 type Message struct {
-	Topic            string
 	PartitionSession *PartitionSession
 
 	MessageData
 	CommitOffset
 
 	WrittenAt time.Time
+}
+
+func (m *Message) Context() context.Context {
+	return m.PartitionSession.Context()
+}
+
+func (m *Message) Topic() string {
+	return m.PartitionSession.Topic
 }
 
 var (
@@ -98,10 +68,6 @@ type CommitOffset struct { // Кусочек, необходимый для ко
 
 func (c CommitOffset) GetCommitOffset() CommitOffset {
 	return c
-}
-
-func (m Message) Context() context.Context {
-	return m.PartitionSession.Context()
 }
 
 var _ CommitableByOffset = Batch{}

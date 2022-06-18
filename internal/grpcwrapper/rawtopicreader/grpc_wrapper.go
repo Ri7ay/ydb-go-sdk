@@ -107,6 +107,13 @@ func (s StreamReader) Recv() (ServerMessage, error) {
 			return nil, err
 		}
 		return resp, nil
+	case *Ydb_PersQueue_V1.StreamingReadServerMessage_StopPartitionSessionRequest_:
+		req := &StopPartitionSessionRequest{}
+		req.ServerMessageMetadata = meta
+		if err = req.fromProto(m.StopPartitionSessionRequest); err != nil {
+			return nil, err
+		}
+		return req, nil
 	case *Ydb_PersQueue_V1.StreamingReadServerMessage_CommitResponse_:
 		resp := &CommitOffsetResponse{}
 		resp.ServerMessageMetadata = meta
@@ -506,6 +513,17 @@ type StopPartitionSessionRequest struct {
 	Graceful           bool
 	CommittedOffset    Offset
 }
+
+func (r *StopPartitionSessionRequest) fromProto(request *Ydb_PersQueue_V1.StreamingReadServerMessage_StopPartitionSessionRequest) error {
+	if request == nil {
+		return xerrors.NewWithIssues("ydb: unexpected grpc nil stop partition session request")
+	}
+	r.PartitionSessionID.FromInt64(request.PartitionSessionId)
+	r.Graceful = request.Graceful
+	r.CommittedOffset.FromInt64(request.CommittedOffset)
+	return nil
+}
+
 type StopPartitionSessionResponse struct {
 	clientMessageImpl
 

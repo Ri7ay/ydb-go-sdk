@@ -33,7 +33,7 @@ func TestBatch_New(t *testing.T) {
 func TestBatch_Cut(t *testing.T) {
 	t.Run("Full", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, _ := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest := batch.cutMessages(100)
 
@@ -42,7 +42,7 @@ func TestBatch_Cut(t *testing.T) {
 	})
 	t.Run("Zero", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, _ := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest := batch.cutMessages(0)
 
@@ -51,12 +51,12 @@ func TestBatch_Cut(t *testing.T) {
 	})
 	t.Run("Middle", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, _ := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest := batch.cutMessages(1)
 
-		expectedBatchHead, _ := newBatch(session, []Message{{Topic: "1"}})
-		expectedBatchRest, _ := newBatch(session, []Message{{Topic: "2"}})
+		expectedBatchHead, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
+		expectedBatchRest, _ := newBatch(session, []Message{{WrittenAt: testTime(2)}})
 		require.Equal(t, expectedBatchHead, head)
 		require.Equal(t, expectedBatchRest, rest)
 	})
@@ -145,6 +145,72 @@ func TestBatch_Extend(t *testing.T) {
 		res, err := b1.append(b2)
 		require.Error(t, err)
 		require.Equal(t, Batch{}, res)
+	})
+}
+
+func TestSplitBytesByBatches(t *testing.T) {
+	t.Run("Empty", func(t *testing.T) {
+		require.NoError(t, splitBytesByMessagesInBatches(nil, 0))
+	})
+	t.Run("BytesToNoMessages", func(t *testing.T) {
+		require.Error(t, splitBytesByMessagesInBatches(nil, 10))
+	})
+
+	t.Run("MetadataOnlyEqually", func(t *testing.T) {
+		batch, err := newBatch(nil, make([]Message, 3))
+		require.NoError(t, err)
+		require.NoError(t, splitBytesByMessagesInBatches([]Batch{batch}, 30))
+
+		for _, mess := range batch.Messages {
+			require.Equal(t, 10, mess.bufferBytesAccount)
+		}
+	})
+
+	t.Run("MetadataOnlyWithReminder", func(t *testing.T) {
+		batch, err := newBatch(nil, make([]Message, 3))
+		require.NoError(t, err)
+		require.NoError(t, splitBytesByMessagesInBatches([]Batch{batch}, 5))
+
+		require.Equal(t, 2, batch.Messages[0].bufferBytesAccount)
+		require.Equal(t, 2, batch.Messages[1].bufferBytesAccount)
+		require.Equal(t, 1, batch.Messages[2].bufferBytesAccount)
+	})
+
+	t.Run("OnlyData", func(t *testing.T) {
+		batch, err := newBatch(nil, make([]Message, 3))
+		require.NoError(t, err)
+		for i := range batch.Messages {
+			batch.Messages[i].rawDataLen = 10
+		}
+
+		require.NoError(t, splitBytesByMessagesInBatches([]Batch{batch}, 30))
+		require.Equal(t, 10, batch.Messages[0].bufferBytesAccount)
+		require.Equal(t, 10, batch.Messages[1].bufferBytesAccount)
+		require.Equal(t, 10, batch.Messages[2].bufferBytesAccount)
+	})
+	t.Run("DataAndMetadataEqually", func(t *testing.T) {
+		batch, err := newBatch(nil, make([]Message, 3))
+		require.NoError(t, err)
+		for i := range batch.Messages {
+			batch.Messages[i].rawDataLen = 5
+		}
+
+		require.NoError(t, splitBytesByMessagesInBatches([]Batch{batch}, 30))
+		require.Equal(t, 10, batch.Messages[0].bufferBytesAccount)
+		require.Equal(t, 10, batch.Messages[1].bufferBytesAccount)
+		require.Equal(t, 10, batch.Messages[2].bufferBytesAccount)
+	})
+	t.Run("DataAndMetadataWithReminder", func(t *testing.T) {
+		batch, err := newBatch(nil, make([]Message, 3))
+		require.NoError(t, err)
+		for i := range batch.Messages {
+			batch.Messages[i].rawDataLen = 5
+		}
+
+		require.NoError(t, splitBytesByMessagesInBatches([]Batch{batch}, 32))
+		require.Equal(t, 11, batch.Messages[0].bufferBytesAccount)
+		require.Equal(t, 11, batch.Messages[1].bufferBytesAccount)
+		require.Equal(t, 10, batch.Messages[2].bufferBytesAccount)
 	})
 }
 

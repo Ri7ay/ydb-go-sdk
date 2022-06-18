@@ -140,7 +140,7 @@ func TestBatcher_Find(t *testing.T) {
 	})
 	t.Run("FoundEmptyFilter", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, err := newBatch(session, []Message{{Topic: "1"}})
+		batch, err := newBatch(session, []Message{{WrittenAt: testTime(1)}})
 		require.NoError(t, err)
 
 		b := newBatcher()
@@ -160,15 +160,15 @@ func TestBatcher_Find(t *testing.T) {
 
 	t.Run("FoundPartialBatchFilter", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, err := newBatch(session, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch, err := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 		require.NoError(t, err)
 
 		b := newBatcher()
 
 		require.NoError(t, b.Add(batch))
 
-		expectedResultBatch, _ := newBatch(session, []Message{{Topic: "1"}})
-		expectedRestBatch, _ := newBatch(session, []Message{{Topic: "2"}})
+		expectedResultBatch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
+		expectedRestBatch, _ := newBatch(session, []Message{{WrittenAt: testTime(2)}})
 		findRes := b.findNeedLock(batcherWaiter{Options: batcherGetOptions{MaxCount: 1}})
 		expectedResult := batcherResultCandidate{
 			Key:         session,
@@ -186,7 +186,7 @@ func TestBatcher_Apply(t *testing.T) {
 		session := &PartitionSession{}
 		b := newBatcher()
 
-		batch, _ := newBatch(session, []Message{{Topic: "1"}})
+		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
 		foundRes := batcherResultCandidate{
 			Key:  session,
 			Rest: batch,
@@ -201,7 +201,7 @@ func TestBatcher_Apply(t *testing.T) {
 		session := &PartitionSession{}
 		b := newBatcher()
 
-		batch, _ := newBatch(session, []Message{{Topic: "1"}})
+		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
 
 		foundRes := batcherResultCandidate{
 			Key:  session,
@@ -220,7 +220,7 @@ func TestBatcher_Apply(t *testing.T) {
 func TestBatcherGetOptions_Split(t *testing.T) {
 	t.Run("Empty", func(t *testing.T) {
 		opts := batcherGetOptions{}
-		batch, _ := newBatch(nil, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 		head, rest, ok := opts.splitBatch(batch)
 
 		require.Equal(t, batch, head)
@@ -229,8 +229,8 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 	})
 	t.Run("MinCount", func(t *testing.T) {
 		opts := batcherGetOptions{MinCount: 2}
-		batch1, _ := newBatch(nil, []Message{{Topic: "1"}})
-		batch2, _ := newBatch(nil, []Message{{Topic: "1"}, {Topic: "2"}})
+		batch1, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}})
+		batch2, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest, ok := opts.splitBatch(batch1)
 		require.True(t, head.isEmpty())
@@ -244,9 +244,9 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 	})
 	t.Run("MaxCount", func(t *testing.T) {
 		opts := batcherGetOptions{MaxCount: 2}
-		batch1, _ := newBatch(nil, []Message{{Topic: "1"}})
-		batch2, _ := newBatch(nil, []Message{{Topic: "1"}, {Topic: "2"}})
-		batch3, _ := newBatch(nil, []Message{{Topic: "a"}, {Topic: "b"}, {Topic: "c"}, {Topic: "d"}})
+		batch1, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}})
+		batch2, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
+		batch3, _ := newBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}, {WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
 
 		head, rest, ok := opts.splitBatch(batch1)
 		require.Equal(t, batch1, head)
@@ -259,8 +259,8 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 		require.True(t, ok)
 
 		head, rest, ok = opts.splitBatch(batch3)
-		expectedHead, _ := newBatch(nil, []Message{{Topic: "a"}, {Topic: "b"}})
-		expectedRest, _ := newBatch(nil, []Message{{Topic: "c"}, {Topic: "d"}})
+		expectedHead, _ := newBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}})
+		expectedRest, _ := newBatch(nil, []Message{{WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
 		require.Equal(t, expectedHead, head)
 		require.Equal(t, expectedRest, rest)
 		require.True(t, ok)
