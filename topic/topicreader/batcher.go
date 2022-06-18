@@ -269,9 +269,11 @@ func (items batcherMessageOrderItems) Append(item batcherMessageOrderItem) (batc
 
 	return append(items, item), nil
 }
+
 func (items batcherMessageOrderItems) IsEmpty() bool {
 	return len(items) == 0
 }
+
 func (items batcherMessageOrderItems) ReplaceHeadItem(item batcherMessageOrderItem) batcherMessageOrderItems {
 	if item.IsEmpty() {
 		return items[1:]
