@@ -39,8 +39,8 @@ func TestBatcher_Add(t *testing.T) {
 	require.NoError(t, b.Add(batch2))
 	require.NoError(t, b.Add(batch3))
 
-	expectedSession1, _ := newBatch(session1, []Message{m11, m12})
-	expectedSession2, _ := newBatch(session2, []Message{m21, m22})
+	expectedSession1 := newBatcherItemBatch(mustNewBatch(session1, []Message{m11, m12}))
+	expectedSession2 := newBatcherItemBatch(mustNewBatch(session2, []Message{m21, m22}))
 
 	expected := batcherMessagesMap{
 		session1: expectedSession1,
@@ -60,16 +60,15 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
-		require.Equal(t, batch, res)
+		require.Equal(t, newBatcherItemBatch(batch), res)
 	})
 
 	t.Run("SimpleOneOfTwo", func(t *testing.T) {
 		ctx := context.Background()
 		session1 := &PartitionSession{}
 		session2 := &PartitionSession{}
-		batch, err := newBatch(session1, []Message{{WrittenAt: testTime(1), PartitionSession: session1}})
-		batch2, err := newBatch(session2, []Message{{WrittenAt: testTime(2), PartitionSession: session2}})
-		require.NoError(t, err)
+		batch := mustNewBatch(session1, []Message{{WrittenAt: testTime(1), PartitionSession: session1}})
+		batch2 := mustNewBatch(session2, []Message{{WrittenAt: testTime(2), PartitionSession: session2}})
 
 		b := newBatcher()
 		require.NoError(t, b.Add(batch))
@@ -77,7 +76,7 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
-		require.Contains(t, []Batch{batch, batch2}, res)
+		require.Contains(t, []batcherMessageOrderItem{newBatcherItemBatch(batch), newBatcherItemBatch(batch2)}, res)
 		require.Len(t, b.messages, 1)
 
 		res2, err := b.Get(ctx, batcherGetOptions{})
@@ -119,14 +118,11 @@ func TestBatcher_GetBatch(t *testing.T) {
 		res, err := b.Get(ctx, batcherGetOptions{MaxCount: 1})
 		require.NoError(t, err)
 
-		expectedBatch, err := newBatch(nil, []Message{m1})
-		require.Equal(t, expectedBatch, res)
-
-		expectedRestBatch, err := newBatch(nil, []Message{m2})
-		require.NoError(t, err)
+		expectedResult := newBatcherItemBatch(mustNewBatch(nil, []Message{m1}))
+		require.Equal(t, expectedResult, res)
 
 		expectedMessages := batcherMessagesMap{
-			nil: expectedRestBatch,
+			nil: newBatcherItemBatch(mustNewBatch(nil, []Message{m2})),
 		}
 		require.Equal(t, expectedMessages, b.messages)
 	})
@@ -150,8 +146,8 @@ func TestBatcher_Find(t *testing.T) {
 		findRes := b.findNeedLock(batcherWaiter{})
 		expectedResult := batcherResultCandidate{
 			Key:         session,
-			Result:      batch,
-			Rest:        Batch{},
+			Result:      newBatcherItemBatch(batch),
+			Rest:        batcherMessageOrderItem{},
 			WaiterIndex: 0,
 			Ok:          true,
 		}
@@ -167,17 +163,19 @@ func TestBatcher_Find(t *testing.T) {
 
 		require.NoError(t, b.Add(batch))
 
-		expectedResultBatch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
-		expectedRestBatch, _ := newBatch(session, []Message{{WrittenAt: testTime(2)}})
 		findRes := b.findNeedLock(batcherWaiter{Options: batcherGetOptions{MaxCount: 1}})
-		expectedResult := batcherResultCandidate{
+
+		expectedResult := newBatcherItemBatch(mustNewBatch(session, []Message{{WrittenAt: testTime(1)}}))
+		expectedRestBatch := newBatcherItemBatch(mustNewBatch(session, []Message{{WrittenAt: testTime(2)}}))
+
+		expectedCandidate := batcherResultCandidate{
 			Key:         session,
-			Result:      expectedResultBatch,
+			Result:      expectedResult,
 			Rest:        expectedRestBatch,
 			WaiterIndex: 0,
 			Ok:          true,
 		}
-		require.Equal(t, expectedResult, findRes)
+		require.Equal(t, expectedCandidate, findRes)
 	})
 }
 
@@ -189,11 +187,11 @@ func TestBatcher_Apply(t *testing.T) {
 		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
 		foundRes := batcherResultCandidate{
 			Key:  session,
-			Rest: batch,
+			Rest: newBatcherItemBatch(batch),
 		}
 		b.applyNeedLock(foundRes)
 
-		expectedMap := batcherMessagesMap{session: batch}
+		expectedMap := batcherMessagesMap{session: newBatcherItemBatch(batch)}
 		require.Equal(t, expectedMap, b.messages)
 	})
 
@@ -205,16 +203,15 @@ func TestBatcher_Apply(t *testing.T) {
 
 		foundRes := batcherResultCandidate{
 			Key:  session,
-			Rest: Batch{},
+			Rest: newBatcherItemBatch(Batch{}),
 		}
 
-		b.messages = batcherMessagesMap{session: batch}
+		b.messages = batcherMessagesMap{session: newBatcherItemBatch(batch)}
 
 		b.applyNeedLock(foundRes)
 
 		require.Empty(t, b.messages)
 	})
-
 }
 
 func TestBatcherGetOptions_Split(t *testing.T) {
@@ -266,4 +263,12 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 		require.True(t, ok)
 
 	})
+}
+
+func mustNewBatch(session *PartitionSession, messages []Message) Batch {
+	batch, err := newBatch(session, messages)
+	if err != nil {
+		panic(err)
+	}
+	return batch
 }

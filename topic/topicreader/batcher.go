@@ -3,6 +3,7 @@ package topicreader
 import (
 	"context"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
@@ -12,7 +13,32 @@ type batcher struct {
 	waiters  []batcherWaiter
 }
 
-type batcherMessagesMap map[*PartitionSession]Batch
+type batcherMessagesMap map[*PartitionSession]batcherMessageOrderItem
+
+type batcherMessageOrderItem struct {
+	Batch      Batch
+	RawMessage rawtopicreader.ServerMessage
+}
+
+func newBatcherItemBatch(b Batch) batcherMessageOrderItem {
+	return batcherMessageOrderItem{Batch: b}
+}
+
+func newBatcherItemRawMessage(b rawtopicreader.ServerMessage) batcherMessageOrderItem {
+	return batcherMessageOrderItem{RawMessage: b}
+}
+
+func (item *batcherMessageOrderItem) IsBatch() bool {
+	return !item.Batch.isEmpty()
+}
+
+func (item *batcherMessageOrderItem) IsRawMessage() bool {
+	return item.RawMessage != nil
+}
+
+func (item *batcherMessageOrderItem) IsEmpty() bool {
+	return item.RawMessage == nil && item.Batch.isEmpty()
+}
 
 func newBatcher() *batcher {
 	return &batcher{
@@ -28,18 +54,18 @@ func (b *batcher) Add(batch Batch) error {
 }
 
 func (b *batcher) addNeedLock(batch Batch) error {
-	var currentBatch Batch
+	var currentItem batcherMessageOrderItem
 	var ok bool
 	var err error
-	if currentBatch, ok = b.messages[batch.partitionSession]; ok {
-		if currentBatch, err = currentBatch.append(batch); err != nil {
+	if currentItem, ok = b.messages[batch.partitionSession]; ok {
+		if currentItem.Batch, err = currentItem.Batch.append(batch); err != nil {
 			return err
 		}
 	} else {
-		currentBatch = batch
+		currentItem = newBatcherItemBatch(batch)
 	}
 
-	b.messages[batch.partitionSession] = currentBatch
+	b.messages[batch.partitionSession] = currentItem
 
 	b.fireWaitersNeedLock()
 
@@ -68,7 +94,7 @@ func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
 	return head, rest, true
 }
 
-func (b *batcher) Get(ctx context.Context, opts batcherGetOptions) (Batch, error) {
+func (b *batcher) Get(ctx context.Context, opts batcherGetOptions) (batcherMessageOrderItem, error) {
 	var findRes batcherResultCandidate
 	b.m.WithLock(func() {
 		findRes = b.findNeedLock(batcherWaiter{Options: opts})
@@ -86,14 +112,14 @@ func (b *batcher) Get(ctx context.Context, opts batcherGetOptions) (Batch, error
 	case batch := <-resChan:
 		return batch, nil
 	case <-ctx.Done():
-		return Batch{}, ctx.Err()
+		return batcherMessageOrderItem{}, ctx.Err()
 	}
 }
 
-func (b *batcher) createWaiter(opts batcherGetOptions) <-chan Batch {
+func (b *batcher) createWaiter(opts batcherGetOptions) <-chan batcherMessageOrderItem {
 	waiter := batcherWaiter{
 		Options: opts,
-		Result:  make(chan Batch),
+		Result:  make(chan batcherMessageOrderItem),
 	}
 
 	b.m.WithLock(func() {
@@ -132,14 +158,10 @@ func (b *batcher) removeWaiterNeedLock(index int) batcherWaiter {
 	return waiter
 }
 
-func (b *batcher) pubBatchNeedLock(batch Batch) {
-	b.messages[batch.partitionSession] = batch
-}
-
 type batcherResultCandidate struct {
 	Key         *PartitionSession
-	Result      Batch
-	Rest        Batch
+	Result      batcherMessageOrderItem
+	Rest        batcherMessageOrderItem
 	WaiterIndex int
 	Ok          bool
 }
@@ -149,16 +171,16 @@ func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate 
 		return batcherResultCandidate{}
 	}
 
-	for k, batch := range b.messages {
+	for k, item := range b.messages {
 		for waiterIndex, waiter := range waiters {
-			head, rest, ok := waiter.Options.splitBatch(batch)
+			head, rest, ok := waiter.Options.splitBatch(item.Batch)
 			if !ok {
 				continue
 			}
 			return batcherResultCandidate{
 				Key:         k,
-				Result:      head,
-				Rest:        rest,
+				Result:      newBatcherItemBatch(head),
+				Rest:        newBatcherItemBatch(rest),
 				WaiterIndex: waiterIndex,
 				Ok:          true,
 			}
@@ -169,7 +191,7 @@ func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate 
 }
 
 func (b *batcher) applyNeedLock(res batcherResultCandidate) {
-	if res.Rest.isEmpty() {
+	if res.Rest.IsEmpty() {
 		delete(b.messages, res.Key)
 	} else {
 		b.messages[res.Key] = res.Rest
@@ -178,5 +200,5 @@ func (b *batcher) applyNeedLock(res batcherResultCandidate) {
 
 type batcherWaiter struct {
 	Options batcherGetOptions
-	Result  chan Batch
+	Result  chan batcherMessageOrderItem
 }

@@ -95,14 +95,34 @@ func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*to
 	return nil, err
 }
 
-func (r *topicStreamReaderImpl) ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (batch Batch, _ error) {
+func (r *topicStreamReaderImpl) ReadMessageBatch(
+	ctx context.Context,
+	opts readMessageBatchOptions,
+) (batch Batch, _ error) {
 	ctx, cancel := xcontext.Merge(ctx, r.ctx)
 	defer func() {
 		cancel(errors.New("ydb: topic stream read message batch competed"))
 		r.freeBufferFromMessages(batch)
 	}()
 
-	return r.batcher.Get(ctx, opts.batcherGetOptions)
+	return r.consumeMessagesUntilBatch(ctx, opts)
+}
+
+func (r *topicStreamReaderImpl) consumeMessagesUntilBatch(
+	ctx context.Context,
+	opts readMessageBatchOptions,
+) (Batch, error) {
+	item, err := r.batcher.Get(ctx, opts.batcherGetOptions)
+	if err != nil {
+		return Batch{}, err
+	}
+
+	switch {
+	case item.IsBatch():
+		return item.Batch, nil
+	default:
+		return Batch{}, xerrors.NewWithIssues("ydb: unexpected item type from batch")
+	}
 }
 
 func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) error {
