@@ -74,14 +74,16 @@ func TestBatcher_GetBatch(t *testing.T) {
 		require.NoError(t, b.Add(batch))
 		require.NoError(t, b.Add(batch2))
 
+		possibleResults := []batcherMessageOrderItem{newBatcherItemBatch(batch), newBatcherItemBatch(batch2)}
+
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
-		require.Contains(t, []batcherMessageOrderItem{newBatcherItemBatch(batch), newBatcherItemBatch(batch2)}, res)
+		require.Contains(t, possibleResults, res)
 		require.Len(t, b.messages, 1)
 
 		res2, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
-		require.Contains(t, []Batch{batch, batch2}, res2)
+		require.Contains(t, possibleResults, res2)
 		require.NotEqual(t, res, res2)
 		require.Empty(t, b.messages)
 	})
@@ -100,7 +102,7 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
-		require.Equal(t, batch, res)
+		require.Equal(t, newBatcherItemBatch(batch), res)
 		require.Empty(t, b.messages)
 	})
 
