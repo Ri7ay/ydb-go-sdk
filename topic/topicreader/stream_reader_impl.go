@@ -332,7 +332,7 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 	}
 
 	for i := range batches {
-		if err := r.batcher.Add(batches[i]); err != nil {
+		if err := r.batcher.AddBatch(batches[i]); err != nil {
 			return err
 		}
 	}

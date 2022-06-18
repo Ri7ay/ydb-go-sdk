@@ -46,26 +46,26 @@ func newBatcher() *batcher {
 	}
 }
 
-func (b *batcher) Add(batch Batch) error {
+func (b *batcher) AddBatch(batch Batch) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
-	return b.addNeedLock(batch)
+	return b.addNeedLock(newBatcherItemBatch(batch))
 }
 
-func (b *batcher) addNeedLock(batch Batch) error {
+func (b *batcher) addNeedLock(item batcherMessageOrderItem) error {
 	var currentItem batcherMessageOrderItem
 	var ok bool
 	var err error
-	if currentItem, ok = b.messages[batch.partitionSession]; ok {
-		if currentItem.Batch, err = currentItem.Batch.append(batch); err != nil {
+	if currentItem, ok = b.messages[item.Batch.partitionSession]; ok {
+		if currentItem.Batch, err = currentItem.Batch.append(item.Batch); err != nil {
 			return err
 		}
 	} else {
-		currentItem = newBatcherItemBatch(batch)
+		currentItem = item
 	}
 
-	b.messages[batch.partitionSession] = currentItem
+	b.messages[item.Batch.partitionSession] = currentItem
 
 	b.fireWaitersNeedLock()
 

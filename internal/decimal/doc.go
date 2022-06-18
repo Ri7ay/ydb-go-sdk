@@ -16,8 +16,8 @@ prepared keeping in mind scaling factor:
 
 	func main() {
 		x := decimal.FromInt128([16]byte{...})
-		x.Add(x, big.NewInt(42)) // Incorrect.
-		x.Add(x, scale(42))      // Correct.
+		x.AddBatch(x, big.NewInt(42)) // Incorrect.
+		x.AddBatch(x, scale(42))      // Correct.
 	}
 
 	func scale(n int64) *big.Int {

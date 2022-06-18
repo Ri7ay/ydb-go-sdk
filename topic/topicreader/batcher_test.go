@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBatcher_Add(t *testing.T) {
+func TestBatcher_AddBatch(t *testing.T) {
 	session1 := &PartitionSession{}
 	session2 := &PartitionSession{}
 
@@ -29,15 +29,14 @@ func TestBatcher_Add(t *testing.T) {
 		PartitionSession: session2,
 	}
 
-	batch1, err := newBatch(session1, []Message{m11, m12})
-	batch2, err := newBatch(session2, []Message{m21})
-	batch3, err := newBatch(session2, []Message{m22})
-	require.NoError(t, err)
+	batch1 := mustNewBatch(session1, []Message{m11, m12})
+	batch2 := mustNewBatch(session2, []Message{m21})
+	batch3 := mustNewBatch(session2, []Message{m22})
 
 	b := newBatcher()
-	require.NoError(t, b.Add(batch1))
-	require.NoError(t, b.Add(batch2))
-	require.NoError(t, b.Add(batch3))
+	require.NoError(t, b.AddBatch(batch1))
+	require.NoError(t, b.AddBatch(batch2))
+	require.NoError(t, b.AddBatch(batch3))
 
 	expectedSession1 := newBatcherItemBatch(mustNewBatch(session1, []Message{m11, m12}))
 	expectedSession2 := newBatcherItemBatch(mustNewBatch(session2, []Message{m21, m22}))
@@ -52,11 +51,10 @@ func TestBatcher_Add(t *testing.T) {
 func TestBatcher_GetBatch(t *testing.T) {
 	t.Run("SimpleGet", func(t *testing.T) {
 		ctx := context.Background()
-		batch, err := newBatch(nil, []Message{{WrittenAt: testTime(1)}})
-		require.NoError(t, err)
+		batch := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
 
 		b := newBatcher()
-		require.NoError(t, b.Add(batch))
+		require.NoError(t, b.AddBatch(batch))
 
 		res, err := b.Get(ctx, batcherGetOptions{})
 		require.NoError(t, err)
@@ -71,8 +69,8 @@ func TestBatcher_GetBatch(t *testing.T) {
 		batch2 := mustNewBatch(session2, []Message{{WrittenAt: testTime(2), PartitionSession: session2}})
 
 		b := newBatcher()
-		require.NoError(t, b.Add(batch))
-		require.NoError(t, b.Add(batch2))
+		require.NoError(t, b.AddBatch(batch))
+		require.NoError(t, b.AddBatch(batch2))
 
 		possibleResults := []batcherMessageOrderItem{newBatcherItemBatch(batch), newBatcherItemBatch(batch2)}
 
@@ -90,14 +88,13 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 	t.Run("GetAfterPut", func(t *testing.T) {
 		ctx := context.Background()
-		batch, err := newBatch(nil, []Message{{WrittenAt: testTime(1)}})
-		require.NoError(t, err)
+		batch := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
 
 		b := newBatcher()
 
 		go func() {
 			time.Sleep(time.Millisecond)
-			_ = b.Add(batch)
+			_ = b.AddBatch(batch)
 		}()
 
 		res, err := b.Get(ctx, batcherGetOptions{})
@@ -111,11 +108,10 @@ func TestBatcher_GetBatch(t *testing.T) {
 
 		m1 := Message{WrittenAt: testTime(1)}
 		m2 := Message{WrittenAt: testTime(2)}
-		batch, err := newBatch(nil, []Message{m1, m2})
-		require.NoError(t, err)
+		batch := mustNewBatch(nil, []Message{m1, m2})
 
 		b := newBatcher()
-		require.NoError(t, b.Add(batch))
+		require.NoError(t, b.AddBatch(batch))
 
 		res, err := b.Get(ctx, batcherGetOptions{MaxCount: 1})
 		require.NoError(t, err)
@@ -138,12 +134,11 @@ func TestBatcher_Find(t *testing.T) {
 	})
 	t.Run("FoundEmptyFilter", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, err := newBatch(session, []Message{{WrittenAt: testTime(1)}})
-		require.NoError(t, err)
+		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 
 		b := newBatcher()
 
-		require.NoError(t, b.Add(batch))
+		require.NoError(t, b.AddBatch(batch))
 
 		findRes := b.findNeedLock(batcherWaiter{})
 		expectedResult := batcherResultCandidate{
@@ -158,12 +153,11 @@ func TestBatcher_Find(t *testing.T) {
 
 	t.Run("FoundPartialBatchFilter", func(t *testing.T) {
 		session := &PartitionSession{}
-		batch, err := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
-		require.NoError(t, err)
+		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		b := newBatcher()
 
-		require.NoError(t, b.Add(batch))
+		require.NoError(t, b.AddBatch(batch))
 
 		findRes := b.findNeedLock(batcherWaiter{Options: batcherGetOptions{MaxCount: 1}})
 
@@ -186,7 +180,7 @@ func TestBatcher_Apply(t *testing.T) {
 		session := &PartitionSession{}
 		b := newBatcher()
 
-		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
+		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 		foundRes := batcherResultCandidate{
 			Key:  session,
 			Rest: newBatcherItemBatch(batch),
@@ -201,7 +195,7 @@ func TestBatcher_Apply(t *testing.T) {
 		session := &PartitionSession{}
 		b := newBatcher()
 
-		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}})
+		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 
 		foundRes := batcherResultCandidate{
 			Key:  session,
@@ -219,7 +213,7 @@ func TestBatcher_Apply(t *testing.T) {
 func TestBatcherGetOptions_Split(t *testing.T) {
 	t.Run("Empty", func(t *testing.T) {
 		opts := batcherGetOptions{}
-		batch, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
+		batch := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 		head, rest, ok := opts.splitBatch(batch)
 
 		require.Equal(t, batch, head)
@@ -228,8 +222,8 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 	})
 	t.Run("MinCount", func(t *testing.T) {
 		opts := batcherGetOptions{MinCount: 2}
-		batch1, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}})
-		batch2, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
+		batch1 := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
+		batch2 := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest, ok := opts.splitBatch(batch1)
 		require.True(t, head.isEmpty())
@@ -243,9 +237,9 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 	})
 	t.Run("MaxCount", func(t *testing.T) {
 		opts := batcherGetOptions{MaxCount: 2}
-		batch1, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}})
-		batch2, _ := newBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
-		batch3, _ := newBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}, {WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
+		batch1 := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
+		batch2 := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
+		batch3 := mustNewBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}, {WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
 
 		head, rest, ok := opts.splitBatch(batch1)
 		require.Equal(t, batch1, head)
@@ -258,8 +252,8 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 		require.True(t, ok)
 
 		head, rest, ok = opts.splitBatch(batch3)
-		expectedHead, _ := newBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}})
-		expectedRest, _ := newBatch(nil, []Message{{WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
+		expectedHead := mustNewBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}})
+		expectedRest := mustNewBatch(nil, []Message{{WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
 		require.Equal(t, expectedHead, head)
 		require.Equal(t, expectedRest, rest)
 		require.True(t, ok)
