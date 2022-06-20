@@ -50,7 +50,7 @@ type topicStreamReaderConfig struct {
 	ReadSelectors        []ReadSelector
 }
 
-func (cfg *topicStreamReaderConfig) initMessage() rawtopicreader.ClientMessage {
+func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
 	// TODO improve
 	res := &rawtopicreader.InitRequest{
 		Consumer: cfg.Consumer,
@@ -77,6 +77,21 @@ func newTopicStreamReaderConfig() topicStreamReaderConfig {
 }
 
 func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
+	reader := newTopicStreamReaderStopped(stream, cfg)
+	if err := reader.initSession(); err != nil {
+		return nil, err
+	}
+	if err := reader.startLoops(); err != nil {
+		return nil, err
+	}
+
+	// start read messages
+	reader.freeBytes <- cfg.BufferSizeProtoBytes
+
+	return reader, nil
+}
+
+func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderConfig) *topicStreamReaderImpl {
 	stopPump, cancel := xcontext.WithErrCancel(pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader")))
 
 	res := &topicStreamReaderImpl{
@@ -90,12 +105,7 @@ func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 	res.sessionController.init(res.ctx, res)
-	res.freeBytes <- cfg.BufferSizeProtoBytes
-	err := res.start()
-	if err == nil {
-		return res, nil
-	}
-	return nil, err
+	return res
 }
 
 func (r *topicStreamReaderImpl) ReadMessageBatch(
@@ -195,13 +205,8 @@ func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
 	return err
 }
 
-func (r *topicStreamReaderImpl) start() error {
+func (r *topicStreamReaderImpl) startLoops() error {
 	if err := r.setStarted(); err != nil {
-		return err
-	}
-
-	if err := r.initSession(); err != nil {
-		r.Close(r.ctx, err)
 		return err
 	}
 

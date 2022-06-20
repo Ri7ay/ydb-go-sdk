@@ -1,7 +1,8 @@
 package topicreader
 
 import (
-	"errors"
+	"context"
+	"runtime/pprof"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -30,58 +31,77 @@ func TestTopicStreamReaderImpl_Create(t *testing.T) {
 
 func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 	t.Run("GracefulFalse", func(t *testing.T) {
-		mc := gomock.NewController(t)
-		stream := NewMockRawStreamReader(mc)
-
-		// Initialize
-		stream.EXPECT().Send(gomock.Any()).Return(nil)
-		stream.EXPECT().Recv().Return(&rawtopicreader.InitResponse{
-			ServerMessageMetadata: rawtopicreader.ServerMessageMetadata{Status: rawydb.StatusSuccess},
-			SessionID:             "test",
-		}, nil)
-
-		// Start partition
-		stream.EXPECT().Recv().Return(&rawtopicreader.StartPartitionSessionRequest{
-			ServerMessageMetadata: rawtopicreader.ServerMessageMetadata{Status: rawydb.StatusSuccess},
-			PartitionSession:      rawtopicreader.PartitionSession{PartitionSessionID: 1},
-		}, nil)
-
-		stream.EXPECT().Send(gomock.Any()).Return(nil) // start partition ack
-		stream.EXPECT().Send(gomock.Any()).Return(nil) // read request
+		e := newTopicReaderTestEnv(t)
 
 		// stop partition
-		needMessage2 := make(chan bool)
+		needStartPartitionMessage := make(chan bool)
 		sendStopPartition := make(chan bool)
-		stream.EXPECT().Recv().Do(func() {
-			close(needMessage2)
+		e.stream.EXPECT().Recv().Do(func() {
+			close(needStartPartitionMessage)
 			<-sendStopPartition
-		}).Return(&rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: 1}, nil)
+		}).Return(&rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: e.partitionSessionID}, nil)
 
-		// close stream
-		needMessage3 := make(chan bool)
-		streamClosed := make(chan bool)
-		stream.EXPECT().Recv().Do(func() {
-			close(needMessage3)
-			<-streamClosed
-		}).Return(nil, errors.New("test stream closed"))
-
-		stream.EXPECT().CloseSend().Do(func() {
-			close(streamClosed)
+		needNextMessage := make(chan bool)
+		e.stream.EXPECT().Recv().Do(func() {
+			close(needNextMessage)
+			<-e.ctx.Done()
 		})
 
-		reader, err := newTopicStreamReader(stream, newTopicStreamReaderConfig())
-		require.NoError(t, err)
+		e.start()
 
-		<-needMessage2
-		session, err := reader.sessionController.Get(1)
-		require.NoError(t, err)
-		require.NoError(t, session.Context().Err())
+		<-needStartPartitionMessage
+		require.NoError(t, e.partitionSession.Context().Err())
 
 		close(sendStopPartition)
-		<-needMessage3
-
-		_, err = reader.sessionController.Get(1)
-		require.Error(t, err)
-		require.Error(t, session.Context().Err())
+		<-needNextMessage
+		require.Error(t, e.partitionSession.Context().Err())
 	})
+}
+
+type streamEnv struct {
+	ctx                context.Context
+	t                  testing.TB
+	reader             *topicStreamReaderImpl
+	stream             *MockRawStreamReader
+	partitionSessionID partitionSessionID
+	mc                 *gomock.Controller
+	partitionSession   *PartitionSession
+}
+
+func newTopicReaderTestEnv(t testing.TB) streamEnv {
+	cleanCtx := context.Background()
+	t.Cleanup(func() {
+		pprof.SetGoroutineLabels(cleanCtx)
+	})
+
+	ctx := pprof.WithLabels(cleanCtx, pprof.Labels("test", t.Name()))
+	pprof.SetGoroutineLabels(ctx)
+
+	mc := gomock.NewController(t)
+
+	stream := NewMockRawStreamReader(mc)
+	stream.EXPECT().CloseSend().MinTimes(0).MaxTimes(1)
+
+	reader := newTopicStreamReaderStopped(stream, newTopicStreamReaderConfig())
+	// reader.initSession() - skip stream level initialization
+
+	const testPartitionID = 5
+	const testSessionID = 15
+	const testSessionComitted = 20
+	session := newPartitionSession(ctx, "/test", testPartitionID, testSessionID, testSessionComitted)
+	require.NoError(t, reader.sessionController.Add(session))
+
+	return streamEnv{
+		ctx:                ctx,
+		t:                  t,
+		reader:             reader,
+		stream:             stream,
+		partitionSession:   session,
+		partitionSessionID: session.partitionSessionID,
+		mc:                 mc,
+	}
+}
+
+func (e *streamEnv) start() {
+	require.NoError(e.t, e.reader.startLoops())
 }
