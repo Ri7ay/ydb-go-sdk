@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
 
@@ -71,10 +72,11 @@ type StreamReader struct {
 type GrpcStream interface {
 	Send(messageNew *Ydb_PersQueue_V1.StreamingReadClientMessage) error
 	Recv() (*Ydb_PersQueue_V1.StreamingReadServerMessage, error)
+	CloseSend() error
 }
 
-func (s StreamReader) Close() error {
-	panic("not implemented")
+func (s StreamReader) CloseSend() error {
+	return s.Stream.CloseSend()
 }
 
 func (s StreamReader) Recv() (ServerMessage, error) {

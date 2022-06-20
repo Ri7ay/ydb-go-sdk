@@ -2,6 +2,7 @@ package backgroundworkers
 
 import (
 	"context"
+	"runtime/pprof"
 	"sync"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -30,7 +31,7 @@ func New(parent context.Context) *BackgroundWorker {
 	}
 }
 
-func (b *BackgroundWorker) Start(f func(ctx context.Context)) {
+func (b *BackgroundWorker) Start(name string, f func(ctx context.Context)) {
 	b.init()
 
 	b.m.Lock()
@@ -44,7 +45,7 @@ func (b *BackgroundWorker) Start(f func(ctx context.Context)) {
 	go func() {
 		defer b.workers.Done()
 
-		f(b.ctx)
+		pprof.Do(b.ctx, pprof.Labels("background", name), f)
 	}()
 }
 

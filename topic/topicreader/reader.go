@@ -20,7 +20,7 @@ var (
 type ReaderStream interface {
 	Recv() (rawtopicreader.ServerMessage, error)
 	Send(mess rawtopicreader.ClientMessage) error
-	Close() error
+	CloseSend() error
 }
 
 type TopicSteamReaderConnect func(ctx context.Context) (ReaderStream, error)
@@ -41,7 +41,13 @@ func newReadMessageBatchOptions() readMessageBatchOptions {
 	return readMessageBatchOptions{}
 }
 
-func NewReader(connectCtx context.Context, connector TopicSteamReaderConnect, consumer string, readSelectors []ReadSelector, opts ...ReaderOption) *Reader {
+func NewReader(
+	connectCtx context.Context,
+	connector TopicSteamReaderConnect,
+	consumer string,
+	readSelectors []ReadSelector,
+	opts ...ReaderOption,
+) *Reader {
 	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
 	readerConnector := func(ctx context.Context) (streamReader, error) {
 		stream, err := connector(ctx)

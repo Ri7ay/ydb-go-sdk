@@ -2,7 +2,6 @@ package topicreader
 
 import (
 	"context"
-	"math/rand"
 	"sync/atomic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
@@ -134,7 +133,7 @@ func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
 func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMessageOrderItem, err error) {
 	var findRes batcherResultCandidate
 	b.m.WithLock(func() {
-		findRes = b.findNeedLock(batcherWaiter{Options: opts})
+		findRes = b.findNeedLock(0, batcherWaiter{Options: opts})
 		if !findRes.Ok {
 			return
 		}
@@ -188,8 +187,9 @@ func (b *batcher) removeWaiterByID(waiterID int64) error {
 }
 
 func (b *batcher) fireWaitersNeedLock() {
+	startIndex := 0
 	for {
-		resCandidate := b.findNeedLock(b.waiters...)
+		resCandidate := b.findNeedLock(startIndex, b.waiters...)
 		if !resCandidate.Ok {
 			return
 		}
@@ -202,10 +202,7 @@ func (b *batcher) fireWaitersNeedLock() {
 			b.applyNeedLock(resCandidate)
 			return
 		default:
-			// the waiter not ready to receive result, try others
-			rand.Shuffle(len(b.waiters), func(i, k int) {
-				b.waiters[i], b.waiters[k] = b.waiters[k], b.waiters[i]
-			})
+			startIndex = resCandidate.WaiterIndex + 1
 		}
 	}
 }
@@ -243,7 +240,7 @@ func newBatcherResultCandidate(
 	}
 }
 
-func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate {
+func (b *batcher) findNeedLock(startIndex int, waiters ...batcherWaiter) batcherResultCandidate {
 	if len(waiters) == 0 || len(b.messages) == 0 {
 		return batcherResultCandidate{}
 	}
@@ -260,8 +257,8 @@ func (b *batcher) findNeedLock(waiters ...batcherWaiter) batcherResultCandidate 
 		}
 
 		if needBatchResult {
-			for waiterIndex, waiter := range waiters {
-				head, rest, ok := waiter.Options.cutBatchItemsHead(items)
+			for waiterIndex, waiter := range waiters[startIndex:] {
+				head, rest, ok = waiter.Options.cutBatchItemsHead(items)
 				if !ok {
 					continue
 				}

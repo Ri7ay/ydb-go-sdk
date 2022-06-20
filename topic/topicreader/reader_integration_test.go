@@ -5,6 +5,7 @@ package topicreader_test
 
 import (
 	"context"
+	"runtime/pprof"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,10 @@ import (
 
 func TestReaderWithLocalDB(t *testing.T) {
 	ctx := context.Background()
+	defer pprof.SetGoroutineLabels(ctx)
+
+	pprof.SetGoroutineLabels(pprof.WithLabels(ctx, pprof.Labels("test", "TestReaderWithLocalDB")))
+
 	db, reader := createDBReader(ctx, t)
 	defer func() {
 		_ = reader.Close()

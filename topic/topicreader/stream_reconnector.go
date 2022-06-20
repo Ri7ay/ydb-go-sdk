@@ -98,13 +98,13 @@ func (r *readerReconnector) Close(ctx context.Context, err error) {
 		_ = r.background.Close(ctx)
 
 		if r.streamVal != nil {
-			r.streamVal.Close(nil, xerrors.WithStackTrace(errReaderClosed))
+			r.streamVal.Close(ctx, xerrors.WithStackTrace(errReaderClosed))
 		}
 	})
 }
 
 func (r *readerReconnector) start(ctx context.Context) {
-	r.background.Start(r.reconnectionLoop)
+	r.background.Start("reconnector-loop", r.reconnectionLoop)
 
 	// start first connection
 	go func() { r.reconnectFromBadStream <- nil }()

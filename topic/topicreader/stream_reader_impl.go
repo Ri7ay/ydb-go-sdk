@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime/pprof"
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
@@ -15,10 +17,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
-var (
-	errGracefulShutdownPartition = xerrors.Wrap(errors.New("ydb: graceful shutdown partition"))
-	errPartitionStopped          = xerrors.Wrap(errors.New("ydb: partition stopped"))
-)
+var errPartitionStopped = xerrors.Wrap(errors.New("ydb: partition stopped"))
 
 type partitionSessionID = rawtopicreader.PartitionSessionID
 
@@ -28,11 +27,14 @@ type topicStreamReaderImpl struct {
 	cancel xcontext.CancelErrFunc
 
 	freeBytes         chan int
-	stream            ReaderStream
 	sessionController partitionSessionStorage
+	backgroundWorkers backgroundworkers.BackgroundWorker
 
-	readResponsesParseSignal chan struct{}
-	batcher                  *batcher
+	rawMessagesFromBuffer chan rawtopicreader.ServerMessage
+
+	batcher *batcher
+
+	stream ReaderStream
 
 	m       xsync.RWMutex
 	err     error
@@ -75,16 +77,17 @@ func newTopicStreamReaderConfig() topicStreamReaderConfig {
 }
 
 func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
-	stopPump, cancel := xcontext.WithErrCancel(cfg.BaseContext)
+	stopPump, cancel := xcontext.WithErrCancel(pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader")))
 
 	res := &topicStreamReaderImpl{
-		cfg:                      cfg,
-		ctx:                      stopPump,
-		freeBytes:                make(chan int, 1),
-		stream:                   stream,
-		cancel:                   cancel,
-		readResponsesParseSignal: make(chan struct{}, 1),
-		batcher:                  newBatcher(),
+		cfg:                   cfg,
+		ctx:                   stopPump,
+		freeBytes:             make(chan int, 1),
+		stream:                &syncedStream{stream: stream},
+		cancel:                cancel,
+		batcher:               newBatcher(),
+		backgroundWorkers:     *backgroundworkers.New(stopPump),
+		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 	res.sessionController.init(res.ctx, res)
 	res.freeBytes <- cfg.BufferSizeProtoBytes
@@ -112,17 +115,69 @@ func (r *topicStreamReaderImpl) consumeMessagesUntilBatch(
 	ctx context.Context,
 	opts readMessageBatchOptions,
 ) (Batch, error) {
-	item, err := r.batcher.Pop(ctx, opts.batcherGetOptions)
-	if err != nil {
-		return Batch{}, err
-	}
+	for {
+		item, err := r.batcher.Pop(ctx, opts.batcherGetOptions)
+		if err != nil {
+			return Batch{}, err
+		}
 
-	switch {
-	case item.IsBatch():
-		return item.Batch, nil
-	default:
-		return Batch{}, xerrors.NewWithIssues("ydb: unexpected item type from batch")
+		switch {
+		case item.IsBatch():
+			return item.Batch, nil
+		case item.IsRawMessage():
+			r.sendRawMessageToChannelUnblocked(item.RawMessage)
+		default:
+			return Batch{}, xerrors.NewWithIssues("ydb: unexpected item type from batcher")
+		}
 	}
+}
+
+func (r *topicStreamReaderImpl) sendRawMessageToChannelUnblocked(mess rawtopicreader.ServerMessage) {
+	select {
+	case r.rawMessagesFromBuffer <- mess:
+		return
+	default:
+		// send in goroutine, without block caller
+		go func() {
+			select {
+			case r.rawMessagesFromBuffer <- mess:
+			case <-r.ctx.Done():
+			}
+		}()
+	}
+}
+
+func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context) {
+	doneChan := ctx.Done()
+
+	for {
+		var mess rawtopicreader.ServerMessage
+		select {
+		case <-doneChan:
+			return
+		case mess = <-r.rawMessagesFromBuffer:
+			// pass
+		}
+
+		switch m := mess.(type) {
+		case *rawtopicreader.StopPartitionSessionRequest:
+			r.onStopPartitionSessionRequestFromBuffer(ctx, m)
+		case *rawtopicreader.PartitionSessionStatusResponse:
+			r.onPartitionSessionStatusResponseFromBuffer(ctx, m)
+		default:
+			r.Close(ctx, xerrors.WithStackTrace(
+				fmt.Errorf("ydb: unexpected server message from buffer: %v", reflect.TypeOf(mess))),
+			)
+		}
+	}
+}
+
+func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(ctx context.Context, mess *rawtopicreader.StopPartitionSessionRequest) {
+	panic("not implemented")
+}
+
+func (r *topicStreamReaderImpl) onPartitionSessionStatusResponseFromBuffer(ctx context.Context, m *rawtopicreader.PartitionSessionStatusResponse) {
+	panic("not implemented")
 }
 
 func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) error {
@@ -135,7 +190,7 @@ func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) 
 func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
 	err := r.stream.Send(mess)
 	if err != nil {
-		r.Close(nil, err)
+		r.Close(r.ctx, err)
 	}
 	return err
 }
@@ -146,12 +201,15 @@ func (r *topicStreamReaderImpl) start() error {
 	}
 
 	if err := r.initSession(); err != nil {
-		r.Close(nil, err)
+		r.Close(r.ctx, err)
 	}
 
-	go r.readMessagesLoop()
-	go r.dataRequestLoop()
-	go r.updateTokenLoop()
+	r.backgroundWorkers.Start("readMessagesLoop", r.readMessagesLoop)
+	r.backgroundWorkers.Start("dataRequestLoop", r.dataRequestLoop)
+	r.backgroundWorkers.Start("updateTokenLoop", r.updateTokenLoop)
+
+	r.backgroundWorkers.Start("consumeRawMessageFromBuffer", r.consumeRawMessageFromBuffer)
+
 	return nil
 }
 
@@ -190,21 +248,21 @@ func (r *topicStreamReaderImpl) initSession() error {
 	return nil
 }
 
-func (r *topicStreamReaderImpl) readMessagesLoop() {
-	ctx, cancel := xcontext.WithErrCancel(context.Background())
+func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
+	ctx, cancel := xcontext.WithErrCancel(ctx)
 	defer cancel(xerrors.NewWithIssues("ydb: topic stream reader messages loop finished"))
 
 	for {
 		serverMessage, err := r.stream.Recv()
 		if err != nil {
-			r.Close(nil, err)
+			r.Close(ctx, err)
 			return
 		}
 
 		status := serverMessage.StatusData()
 		if !status.Status.IsSuccess() {
 			// TODO: actualize error message
-			r.Close(nil, xerrors.WithStackTrace(fmt.Errorf("bad status from pq grpc stream: %v", status.Status)))
+			r.Close(ctx, xerrors.WithStackTrace(fmt.Errorf("bad status from pq grpc stream: %v", status.Status)))
 		}
 
 		switch m := serverMessage.(type) {
@@ -237,17 +295,17 @@ func (r *topicStreamReaderImpl) readMessagesLoop() {
 	}
 }
 
-func (r *topicStreamReaderImpl) dataRequestLoop() {
+func (r *topicStreamReaderImpl) dataRequestLoop(ctx context.Context) {
 	if r.ctx.Err() != nil {
 		return
 	}
 
-	doneChan := r.ctx.Done()
+	doneChan := ctx.Done()
 
 	for {
 		select {
 		case <-doneChan:
-			r.Close(nil, r.ctx.Err())
+			r.Close(ctx, r.ctx.Err())
 			return
 
 		case free := <-r.freeBytes:
@@ -266,7 +324,7 @@ func (r *topicStreamReaderImpl) dataRequestLoop() {
 
 			err := r.stream.Send(&rawtopicreader.ReadRequest{BytesSize: sum})
 			if err != nil {
-				r.Close(nil, err)
+				r.Close(ctx, err)
 			}
 		}
 	}
@@ -280,11 +338,11 @@ func (r *topicStreamReaderImpl) freeBufferFromMessages(batch Batch) {
 	r.freeBytes <- size
 }
 
-func (r *topicStreamReaderImpl) updateTokenLoop() {
+func (r *topicStreamReaderImpl) updateTokenLoop(ctx context.Context) {
 	ticker := time.NewTicker(r.cfg.CredUpdateInterval)
 	defer ticker.Stop()
 
-	readerCancel := r.ctx.Done()
+	readerCancel := ctx.Done()
 	for {
 		select {
 		case <-readerCancel:
@@ -349,6 +407,13 @@ func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
 		r.err = err
 		r.cancel(err)
 	})
+
+	_ = r.stream.CloseSend()
+
+	closeErr := r.backgroundWorkers.Close(ctx)
+	if err == nil {
+		err = closeErr
+	}
 }
 
 func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffsetResponse) error {

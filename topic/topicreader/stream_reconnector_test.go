@@ -58,7 +58,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			streamErr: errUnconnected,
 		}
 		reader.initChannels()
-		reader.background.Start(reader.reconnectionLoop)
+		reader.background.Start("test-reconnectionLoop", reader.reconnectionLoop)
 
 		res, err := reader.ReadMessageBatch(context.Background(), opts)
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			streamErr: errUnconnected,
 		}
 		reader.initChannels()
-		reader.background.Start(reader.reconnectionLoop)
+		reader.background.Start("test-reconnectionLoop", reader.reconnectionLoop)
 
 		res, err := reader.ReadMessageBatch(context.Background(), opts)
 		require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 			},
 		}...)
 
-		reconnector.background.Start(reconnector.reconnectionLoop)
+		reconnector.background.Start("test-reconnectionLoop", reconnector.reconnectionLoop)
 		reconnector.reconnectFromBadStream <- nil
 
 		<-stream1Ready
