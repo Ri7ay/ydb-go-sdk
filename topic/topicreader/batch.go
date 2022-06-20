@@ -90,7 +90,7 @@ func (m Batch) append(b Batch) (Batch, error) {
 	}
 
 	res := m
-	res.Messages = append(m.Messages, b.Messages...)
+	res.Messages = append(res.Messages, b.Messages...)
 	res.ToOffset = b.ToOffset
 	return res, nil
 }
@@ -106,7 +106,6 @@ func (m Batch) cutMessages(count int) (head, rest Batch) {
 		rest, _ = newBatch(m.partitionSession, m.Messages[count:])
 		return head, rest
 	}
-
 }
 
 func (m Batch) isEmpty() bool {

@@ -12,7 +12,7 @@ type CommitableByOffset interface { // Интерфейс, который мож
 
 type CommitBatch []CommitOffset
 
-func CommitBatchFromMessages(messages ...*Message) CommitBatch {
+func CommitBatchFromMessages(messages ...Message) CommitBatch {
 	var res CommitBatch
 	res.AppendMessages(messages...)
 	return res
@@ -30,7 +30,7 @@ func (b *CommitBatch) Append(messages ...CommitableByOffset) {
 	}
 }
 
-func (b *CommitBatch) AppendMessages(messages ...*Message) {
+func (b *CommitBatch) AppendMessages(messages ...Message) {
 	for i := range messages {
 		*b = append(*b, messages[i].GetCommitOffset())
 	}

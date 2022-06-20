@@ -139,7 +139,7 @@ func (r *Reader) CommitBatch(ctx context.Context, commitBatch CommitBatch) error
 	return r.reader.Commit(ctx, commitBatch)
 }
 
-func (r *Reader) CommitMessages(ctx context.Context, messages ...*Message) error {
+func (r *Reader) CommitMessages(ctx context.Context, messages ...Message) error {
 	return r.CommitBatch(ctx, CommitBatchFromMessages(messages...))
 }
 
