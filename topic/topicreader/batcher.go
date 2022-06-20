@@ -2,12 +2,17 @@ package topicreader
 
 import (
 	"context"
+	"math/rand"
+	"sync/atomic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
 type batcher struct {
+	waiterId int64
+
 	m        xsync.Mutex
 	messages batcherMessagesMap
 	waiters  []batcherWaiter
@@ -126,7 +131,7 @@ func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
 	return head, rest, true
 }
 
-func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (batcherMessageOrderItem, error) {
+func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMessageOrderItem, err error) {
 	var findRes batcherResultCandidate
 	b.m.WithLock(func() {
 		findRes = b.findNeedLock(batcherWaiter{Options: opts})
@@ -139,17 +144,24 @@ func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (batcherMessa
 		return findRes.Result, nil
 	}
 
-	resChan := b.createWaiter(opts)
+	waiter := b.createWaiter(opts)
+	defer func() {
+		removeWaiterErr := b.removeWaiterByID(waiter.ID)
+		if err == nil {
+			err = removeWaiterErr
+		}
+	}()
 	select {
-	case batch := <-resChan:
+	case batch := <-waiter.Result:
 		return batch, nil
 	case <-ctx.Done():
 		return batcherMessageOrderItem{}, ctx.Err()
 	}
 }
 
-func (b *batcher) createWaiter(opts batcherGetOptions) <-chan batcherMessageOrderItem {
+func (b *batcher) createWaiter(opts batcherGetOptions) batcherWaiter {
 	waiter := batcherWaiter{
+		ID:      atomic.AddInt64(&b.waiterId, 1),
 		Options: opts,
 		Result:  make(chan batcherMessageOrderItem),
 	}
@@ -158,7 +170,21 @@ func (b *batcher) createWaiter(opts batcherGetOptions) <-chan batcherMessageOrde
 		b.waiters = append(b.waiters, waiter)
 	})
 
-	return waiter.Result
+	return waiter
+}
+
+func (b *batcher) removeWaiterByID(waiterID int64) error {
+	b.m.Lock()
+	defer b.m.Unlock()
+
+	for i := 0; i < len(b.waiters); i++ {
+		if b.waiters[i].ID == waiterID {
+			b.removeWaiterByIndexNeedLock(i)
+			return nil
+		}
+	}
+
+	return xerrors.NewWithStackTrace("ydb: remove unexpected waiter")
 }
 
 func (b *batcher) fireWaitersNeedLock() {
@@ -168,7 +194,7 @@ func (b *batcher) fireWaitersNeedLock() {
 			return
 		}
 
-		waiter := b.removeWaiterNeedLock(resCandidate.WaiterIndex)
+		waiter := b.waiters[resCandidate.WaiterIndex]
 
 		select {
 		case waiter.Result <- resCandidate.Result:
@@ -176,12 +202,15 @@ func (b *batcher) fireWaitersNeedLock() {
 			b.applyNeedLock(resCandidate)
 			return
 		default:
-			// waiter cancelled, try with other waiter
+			// the waiter not ready to receive result, try others
+			rand.Shuffle(len(b.waiters), func(i, k int) {
+				b.waiters[i], b.waiters[k] = b.waiters[k], b.waiters[i]
+			})
 		}
 	}
 }
 
-func (b *batcher) removeWaiterNeedLock(index int) batcherWaiter {
+func (b *batcher) removeWaiterByIndexNeedLock(index int) batcherWaiter {
 	waiter := b.waiters[index]
 
 	copy(b.waiters[index:], b.waiters[index+1:])
@@ -198,7 +227,13 @@ type batcherResultCandidate struct {
 	Ok          bool
 }
 
-func newBatcherResultCandidate(key *PartitionSession, result batcherMessageOrderItem, rest batcherMessageOrderItems, waiterIndex int, ok bool) batcherResultCandidate {
+func newBatcherResultCandidate(
+	key *PartitionSession,
+	result batcherMessageOrderItem,
+	rest batcherMessageOrderItems,
+	waiterIndex int,
+	ok bool,
+) batcherResultCandidate {
 	return batcherResultCandidate{
 		Key:         key,
 		Result:      result,
@@ -291,6 +326,7 @@ type batcherMessageOrderItem struct {
 }
 
 type batcherWaiter struct {
+	ID      int64
 	Options batcherGetOptions
 	Result  chan batcherMessageOrderItem
 }

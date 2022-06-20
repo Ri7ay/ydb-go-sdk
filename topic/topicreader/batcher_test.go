@@ -320,7 +320,15 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 		opts := batcherGetOptions{MaxCount: 2}
 		batch1 := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}})
 		batch2 := mustNewBatch(nil, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
-		batch3 := mustNewBatch(nil, []Message{{WrittenAt: testTime(11)}, {WrittenAt: testTime(12)}, {WrittenAt: testTime(13)}, {WrittenAt: testTime(14)}})
+		batch3 := mustNewBatch(
+			nil,
+			[]Message{
+				{WrittenAt: testTime(11)},
+				{WrittenAt: testTime(12)},
+				{WrittenAt: testTime(13)},
+				{WrittenAt: testTime(14)},
+			},
+		)
 
 		head, rest, ok := opts.splitBatch(batch1)
 		require.Equal(t, batch1, head)
@@ -338,7 +346,6 @@ func TestBatcherGetOptions_Split(t *testing.T) {
 		require.Equal(t, expectedHead, head)
 		require.Equal(t, expectedRest, rest)
 		require.True(t, ok)
-
 	})
 }
 

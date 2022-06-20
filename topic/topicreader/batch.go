@@ -102,7 +102,9 @@ func (m Batch) cutMessages(count int) (head, rest Batch) {
 	case count >= len(m.Messages):
 		return m, Batch{}
 	default:
-		head, _ = newBatch(m.partitionSession, m.Messages[:count])
+		// slice[0:count:count] - limit slice capacity and prevent overwrite rest by append messages to head
+		// explicit 0 need for prevent typos, when type slice[count:count] instead of slice[:count:count]
+		head, _ = newBatch(m.partitionSession, m.Messages[0:count:count])
 		rest, _ = newBatch(m.partitionSession, m.Messages[count:])
 		return head, rest
 	}
