@@ -8,6 +8,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -264,7 +265,7 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 		}},
 	}...)
 
-	reconnector.start(ctx)
+	reconnector.start()
 
 	<-connectionRequested
 	reconnector.Close(ctx, nil)

@@ -45,7 +45,7 @@ func newReaderReconnector(connectCtx context.Context, connector readerConnectFun
 	}
 
 	res.initChannels()
-	res.start(connectCtx)
+	res.start()
 
 	return res
 }
@@ -103,11 +103,11 @@ func (r *readerReconnector) Close(ctx context.Context, err error) {
 	})
 }
 
-func (r *readerReconnector) start(ctx context.Context) {
+func (r *readerReconnector) start() {
 	r.background.Start("reconnector-loop", r.reconnectionLoop)
 
 	// start first connection
-	go func() { r.reconnectFromBadStream <- nil }()
+	r.reconnectFromBadStream <- nil
 }
 
 func (r *readerReconnector) initChannels() {
