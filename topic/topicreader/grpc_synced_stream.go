@@ -6,11 +6,11 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
-var _ ReaderStream = &syncedStream{}
+var _ RawStreamReader = &syncedStream{}
 
 type syncedStream struct {
 	m      sync.Mutex
-	stream ReaderStream
+	stream RawStreamReader
 }
 
 func (s *syncedStream) Recv() (rawtopicreader.ServerMessage, error) {

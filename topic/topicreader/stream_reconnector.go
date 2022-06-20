@@ -20,20 +20,20 @@ const (
 	forceReconnectInterval = time.Hour * 24 * 365 * 100 // never
 )
 
-type readerConnectFunc func(ctx context.Context) (streamReader, error)
+type readerConnectFunc func(ctx context.Context) (batchedStreamReader, error)
 
 type readerReconnector struct {
 	background backgroundworkers.BackgroundWorker
 
 	readerConnect readerConnectFunc
 
-	reconnectFromBadStream chan streamReader
+	reconnectFromBadStream chan batchedStreamReader
 
 	closeOnce sync.Once
 
 	m                          xsync.RWMutex
 	streamConnectionInProgress chan struct{} // opened if connection in progress, closed if connection established
-	streamVal                  streamReader
+	streamVal                  batchedStreamReader
 	streamErr                  error
 	closedErr                  error
 }
@@ -111,7 +111,7 @@ func (r *readerReconnector) start() {
 }
 
 func (r *readerReconnector) initChannels() {
-	r.reconnectFromBadStream = make(chan streamReader, 1)
+	r.reconnectFromBadStream = make(chan batchedStreamReader, 1)
 	r.streamConnectionInProgress = make(chan struct{})
 	close(r.streamConnectionInProgress) // no progress at start
 }
@@ -131,7 +131,7 @@ func (r *readerReconnector) reconnectionLoop(ctx context.Context) {
 	}
 }
 
-func (r *readerReconnector) reconnect(ctx context.Context, oldReader streamReader) {
+func (r *readerReconnector) reconnect(ctx context.Context, oldReader batchedStreamReader) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -168,7 +168,7 @@ func (r *readerReconnector) reconnect(ctx context.Context, oldReader streamReade
 	})
 }
 
-func (r *readerReconnector) fireReconnectOnRetryableError(stream streamReader, err error) {
+func (r *readerReconnector) fireReconnectOnRetryableError(stream batchedStreamReader, err error) {
 	if !isRetryableError(err) {
 		return
 	}
@@ -181,7 +181,7 @@ func (r *readerReconnector) fireReconnectOnRetryableError(stream streamReader, e
 	}
 }
 
-func (r *readerReconnector) stream(ctx context.Context) (streamReader, error) {
+func (r *readerReconnector) stream(ctx context.Context) (batchedStreamReader, error) {
 	var err error
 	var connectionChan chan struct{}
 	r.m.WithRLock(func() {
@@ -201,7 +201,7 @@ func (r *readerReconnector) stream(ctx context.Context) (streamReader, error) {
 	case <-r.background.Done():
 		return nil, r.closedErr
 	case <-connectionChan:
-		var reader streamReader
+		var reader batchedStreamReader
 		r.m.WithRLock(func() {
 			reader = r.streamVal
 			err = r.streamErr

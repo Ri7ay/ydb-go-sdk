@@ -17,16 +17,19 @@ var (
 	errReaderClosed = errors.New("reader closed")
 )
 
-type ReaderStream interface {
+//nolint:lll
+//go:generate mockgen -destination raw_stream_reader_mock_test.go -package topicreader -write_package_comment=false . RawStreamReader
+
+type RawStreamReader interface {
 	Recv() (rawtopicreader.ServerMessage, error)
 	Send(mess rawtopicreader.ClientMessage) error
 	CloseSend() error
 }
 
-type TopicSteamReaderConnect func(ctx context.Context) (ReaderStream, error)
+type TopicSteamReaderConnect func(ctx context.Context) (RawStreamReader, error)
 
 type Reader struct {
-	reader     streamReader
+	reader     batchedStreamReader
 	oneMessage chan *Message
 
 	messageReaderLoopOnce sync.Once
@@ -49,7 +52,7 @@ func NewReader(
 	opts ...ReaderOption,
 ) *Reader {
 	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
-	readerConnector := func(ctx context.Context) (streamReader, error) {
+	readerConnector := func(ctx context.Context) (batchedStreamReader, error) {
 		stream, err := connector(ctx)
 		if err != nil {
 			return nil, err

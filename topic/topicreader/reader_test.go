@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 )
 
@@ -18,7 +19,7 @@ func TestReader_Close(t *testing.T) {
 
 	testErr := errors.New("test error")
 	readerContext, readerCancel := context.WithCancel(context.Background())
-	baseReader := NewMockstreamReader(mc)
+	baseReader := NewMockbatchedStreamReader(mc)
 	baseReader.EXPECT().ReadMessageBatch(gomock.Any(), readMessageBatchOptions{}).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 	}).Return(Batch{}, testErr)
@@ -113,7 +114,7 @@ func TestReader_Commit(t *testing.T) {
 	mc := gomock.NewController(t)
 	defer mc.Finish()
 
-	baseReader := NewMockstreamReader(mc)
+	baseReader := NewMockbatchedStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{{
@@ -138,7 +139,7 @@ func TestReader_CommitBatch(t *testing.T) {
 	mc := gomock.NewController(t)
 	defer mc.Finish()
 
-	baseReader := NewMockstreamReader(mc)
+	baseReader := NewMockbatchedStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{{
@@ -163,7 +164,7 @@ func TestReader_CommitMessages(t *testing.T) {
 	mc := gomock.NewController(t)
 	defer mc.Finish()
 
-	baseReader := NewMockstreamReader(mc)
+	baseReader := NewMockbatchedStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
 	expectedBatchOk := CommitBatch{

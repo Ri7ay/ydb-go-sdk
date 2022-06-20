@@ -34,7 +34,7 @@ type topicStreamReaderImpl struct {
 
 	batcher *batcher
 
-	stream ReaderStream
+	stream RawStreamReader
 
 	m       xsync.RWMutex
 	err     error
@@ -76,7 +76,7 @@ func newTopicStreamReaderConfig() topicStreamReaderConfig {
 	}
 }
 
-func newTopicStreamReader(stream ReaderStream, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
+func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
 	stopPump, cancel := xcontext.WithErrCancel(pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader")))
 
 	res := &topicStreamReaderImpl{
@@ -202,6 +202,7 @@ func (r *topicStreamReaderImpl) start() error {
 
 	if err := r.initSession(); err != nil {
 		r.Close(r.ctx, err)
+		return err
 	}
 
 	r.backgroundWorkers.Start("readMessagesLoop", r.readMessagesLoop)
@@ -406,14 +407,11 @@ func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
 
 		r.err = err
 		r.cancel(err)
+
+		_ = r.stream.CloseSend()
 	})
 
-	_ = r.stream.CloseSend()
-
-	closeErr := r.backgroundWorkers.Close(ctx)
-	if err == nil {
-		err = closeErr
-	}
+	_ = r.backgroundWorkers.Close(ctx)
 }
 
 func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffsetResponse) error {

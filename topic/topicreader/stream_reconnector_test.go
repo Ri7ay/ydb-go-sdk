@@ -12,14 +12,14 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
-var _ streamReader = &readerReconnector{} // check interface implementation
+var _ batchedStreamReader = &readerReconnector{} // check interface implementation
 
 func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 	t.Run("Ok", func(t *testing.T) {
 		mc := gomock.NewController(t)
 		defer mc.Finish()
 
-		baseReader := NewMockstreamReader(mc)
+		baseReader := NewMockbatchedStreamReader(mc)
 
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 		batch := Batch{
@@ -40,7 +40,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		mc := gomock.NewController(t)
 		defer mc.Finish()
 
-		baseReader := NewMockstreamReader(mc)
+		baseReader := NewMockbatchedStreamReader(mc)
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 		batch := Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
@@ -49,7 +49,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		connectCalled := 0
 		reader := &readerReconnector{
-			readerConnect: func(ctx context.Context) (streamReader, error) {
+			readerConnect: func(ctx context.Context) (batchedStreamReader, error) {
 				connectCalled++
 				if connectCalled > 1 {
 					return nil, errors.New("unexpected call test connect function")
@@ -72,26 +72,26 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 
-		baseReader1 := NewMockstreamReader(mc)
+		baseReader1 := NewMockbatchedStreamReader(mc)
 		baseReader1.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).Return(Batch{}, xerrors.Retryable(errors.New("test1")))
 		baseReader1.EXPECT().Close(gomock.Any(), gomock.Any()).Return()
 
-		baseReader2 := NewMockstreamReader(mc)
+		baseReader2 := NewMockbatchedStreamReader(mc)
 		baseReader2.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(Batch{}, xerrors.Retryable(errors.New("test2")))
 		baseReader2.EXPECT().Close(gomock.Any(), gomock.Any()).Return()
 
-		baseReader3 := NewMockstreamReader(mc)
+		baseReader3 := NewMockbatchedStreamReader(mc)
 		batch := Batch{
 			Messages: []Message{{WrittenAt: time.Date(2022, 0o6, 15, 17, 56, 0, 0, time.UTC)}},
 		}
 		baseReader3.EXPECT().ReadMessageBatch(gomock.Any(), opts).Return(batch, nil)
 
-		readers := []streamReader{
+		readers := []batchedStreamReader{
 			baseReader1, baseReader2, baseReader3,
 		}
 		connectCalled := 0
 		reader := &readerReconnector{
-			readerConnect: func(ctx context.Context) (streamReader, error) {
+			readerConnect: func(ctx context.Context) (batchedStreamReader, error) {
 				connectCalled++
 				return readers[connectCalled-1], nil
 			},
@@ -140,7 +140,7 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 		mc := gomock.NewController(t)
 		defer mc.Finish()
 
-		stream := NewMockstreamReader(mc)
+		stream := NewMockbatchedStreamReader(mc)
 		stream.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, offset CommitBatch) {
 			require.Equal(t, "v", ctx.Value("k"))
 			require.Equal(t, commitBatch, offset)
@@ -151,7 +151,7 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 	})
 	t.Run("StreamOkCommitErr", func(t *testing.T) {
 		mc := gomock.NewController(t)
-		stream := NewMockstreamReader(mc)
+		stream := NewMockbatchedStreamReader(mc)
 		stream.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, offset CommitBatch) {
 			require.Equal(t, "v", ctx.Value("k"))
 			require.Equal(t, commitBatch, offset)
@@ -182,9 +182,9 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		mc := gomock.NewController(t)
 		defer mc.Finish()
 
-		newStream1 := NewMockstreamReader(mc)
+		newStream1 := NewMockbatchedStreamReader(mc)
 		newStream1.EXPECT().Close(gomock.Any(), gomock.Any())
-		newStream2 := NewMockstreamReader(mc)
+		newStream2 := NewMockbatchedStreamReader(mc)
 		newStream2.EXPECT().Close(gomock.Any(), gomock.Any())
 
 		reconnector := &readerReconnector{}
@@ -194,7 +194,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		stream2Ready := make(chan struct{})
 		reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
 			{
-				callback: func(ctx context.Context) (streamReader, error) {
+				callback: func(ctx context.Context) (batchedStreamReader, error) {
 					close(stream1Ready)
 					return newStream1, nil
 				},
@@ -203,13 +203,13 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 				err: xerrors.Retryable(errors.New("test reconnect error")),
 			},
 			{
-				callback: func(ctx context.Context) (streamReader, error) {
+				callback: func(ctx context.Context) (batchedStreamReader, error) {
 					close(stream2Ready)
 					return newStream2, nil
 				},
 			},
 			{
-				callback: func(ctx context.Context) (streamReader, error) {
+				callback: func(ctx context.Context) (batchedStreamReader, error) {
 					t.Error()
 					return nil, errors.New("unexpected call")
 				},
@@ -222,7 +222,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		<-stream1Ready
 
 		// skip bad (old) stream
-		reconnector.reconnectFromBadStream <- NewMockstreamReader(mc)
+		reconnector.reconnectFromBadStream <- NewMockbatchedStreamReader(mc)
 
 		reconnector.reconnectFromBadStream <- newStream1
 
@@ -248,18 +248,18 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 	reconnector := &readerReconnector{}
 	reconnector.initChannels()
 
-	stream := NewMockstreamReader(mc)
+	stream := NewMockbatchedStreamReader(mc)
 	stream.EXPECT().Close(gomock.Any(), gomock.Any()).Do(func(_ context.Context, err error) {
 		require.Error(t, err)
 	})
 
 	connectionRequested := make(chan struct{})
 	reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
-		{callback: func(ctx context.Context) (streamReader, error) {
+		{callback: func(ctx context.Context) (batchedStreamReader, error) {
 			close(connectionRequested)
 			return stream, nil
 		}},
-		{callback: func(ctx context.Context) (streamReader, error) {
+		{callback: func(ctx context.Context) (batchedStreamReader, error) {
 			t.Error()
 			return nil, errors.New("unexpected call")
 		}},
@@ -276,7 +276,7 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 		mc := gomock.NewController(t)
 		reconnector := &readerReconnector{}
 
-		stream := NewMockstreamReader(mc)
+		stream := NewMockbatchedStreamReader(mc)
 		reconnector.initChannels()
 
 		reconnector.fireReconnectOnRetryableError(stream, nil)
@@ -305,7 +305,7 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 		defer mc.Finish()
 
 		reconnector := &readerReconnector{}
-		stream := NewMockstreamReader(mc)
+		stream := NewMockbatchedStreamReader(mc)
 		reconnector.initChannels()
 
 	fillChannel:
@@ -327,12 +327,12 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 
 type readerConnectFuncAnswer struct {
 	callback readerConnectFunc
-	stream   streamReader
+	stream   batchedStreamReader
 	err      error
 }
 
 func readerConnectFuncMock(answers ...readerConnectFuncAnswer) readerConnectFunc {
-	return func(ctx context.Context) (streamReader, error) {
+	return func(ctx context.Context) (batchedStreamReader, error) {
 		res := answers[0]
 		if len(answers) > 1 {
 			answers = answers[1:]
