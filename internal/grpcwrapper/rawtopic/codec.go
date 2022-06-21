@@ -6,8 +6,8 @@ type Codec int
 
 const (
 	CodecUNSPECIFIED Codec = iota
-	CodecRaw         Codec = 1
-	CodecGzip        Codec = 2
+	CodecRaw               = Codec(Ydb_PersQueue_V1.Codec_CODEC_RAW)
+	CodecGzip              = Codec(Ydb_PersQueue_V1.Codec_CODEC_GZIP)
 )
 
 const (
