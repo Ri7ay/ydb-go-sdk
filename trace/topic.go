@@ -22,10 +22,11 @@ type (
 		Offset           int64
 	}
 	OnPartitionReadStopInfo struct {
-		PartitionContext context.Context
-		Topic            string
-		PartitionID      int64
-		Graceful         bool
+		PartitionContext   context.Context
+		Topic              string
+		PartitionID        int64
+		PartitionSessionID int64
+		Graceful           bool
 	}
 
 	OnPartitionCommittedInfo struct {

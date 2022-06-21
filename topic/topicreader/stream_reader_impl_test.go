@@ -2,11 +2,17 @@ package topicreader
 
 import (
 	"context"
+	"errors"
 	"runtime/pprof"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
 
@@ -32,29 +38,17 @@ func TestTopicStreamReaderImpl_Create(t *testing.T) {
 func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 	t.Run("GracefulFalse", func(t *testing.T) {
 		e := newTopicReaderTestEnv(t)
+		e.Start()
 
-		// stop partition
-		needStartPartitionMessage := make(chan bool)
-		sendStopPartition := make(chan bool)
-		e.stream.EXPECT().Recv().Do(func() {
-			close(needStartPartitionMessage)
-			<-sendStopPartition
-		}).Return(&rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: e.partitionSessionID}, nil)
-
-		needNextMessage := make(chan bool)
-		e.stream.EXPECT().Recv().Do(func() {
-			close(needNextMessage)
-			<-e.ctx.Done()
-		})
-
-		e.start()
-
-		<-needStartPartitionMessage
 		require.NoError(t, e.partitionSession.Context().Err())
 
-		close(sendStopPartition)
-		<-needNextMessage
-		require.Error(t, e.partitionSession.Context().Err())
+		// stop partition
+		e.SendAndSetCallback(
+			&rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: e.partitionSessionID},
+			func() {
+				require.Error(t, e.partitionSession.Context().Err())
+			})
+		e.WaitReceived()
 	})
 }
 
@@ -66,6 +60,17 @@ type streamEnv struct {
 	partitionSessionID partitionSessionID
 	mc                 *gomock.Controller
 	partitionSession   *PartitionSession
+
+	m                          xsync.Mutex
+	messagesFromServerToClient chan testStreamResult
+	nextMessageNeedCallback    func()
+}
+
+type testStreamResult struct {
+	nextMessageCallback func()
+	mess                rawtopicreader.ServerMessage
+	err                 error
+	waitOnly            bool
 }
 
 func newTopicReaderTestEnv(t testing.TB) streamEnv {
@@ -76,11 +81,15 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 
 	ctx := pprof.WithLabels(cleanCtx, pprof.Labels("test", t.Name()))
 	pprof.SetGoroutineLabels(ctx)
+	ctx, ctxCancel := xcontext.WithErrCancel(ctx)
+	// call cleanup in defer for cancel test context before start other cleanup functions
+	defer t.Cleanup(func() {
+		ctxCancel(errors.New("test cleanup"))
+	})
 
 	mc := gomock.NewController(t)
 
 	stream := NewMockRawStreamReader(mc)
-	stream.EXPECT().CloseSend().MinTimes(0).MaxTimes(1)
 
 	reader := newTopicStreamReaderStopped(stream, newTopicStreamReaderConfig())
 	// reader.initSession() - skip stream level initialization
@@ -91,17 +100,89 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 	session := newPartitionSession(ctx, "/test", testPartitionID, testSessionID, testSessionComitted)
 	require.NoError(t, reader.sessionController.Add(session))
 
-	return streamEnv{
-		ctx:                ctx,
-		t:                  t,
-		reader:             reader,
-		stream:             stream,
-		partitionSession:   session,
-		partitionSessionID: session.partitionSessionID,
-		mc:                 mc,
+	env := streamEnv{
+		ctx:                        ctx,
+		t:                          t,
+		reader:                     reader,
+		stream:                     stream,
+		messagesFromServerToClient: make(chan testStreamResult),
+		partitionSession:           session,
+		partitionSessionID:         session.partitionSessionID,
+		mc:                         mc,
 	}
+
+	stream.EXPECT().Recv().AnyTimes().DoAndReturn(env.receiveMessageHandler)
+	stream.EXPECT().CloseSend().Return(nil)
+
+	t.Cleanup(func() {
+		cleanupTimeout, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		env.reader.Close(cleanupTimeout, errors.New("test finished"))
+		require.NoError(t, cleanupTimeout.Err())
+	})
+
+	t.Cleanup(func() {
+		if messLen := len(env.messagesFromServerToClient); messLen != 0 {
+			t.Fatalf("not all messages consumed from server: %v", messLen)
+		}
+	})
+
+	return env
 }
 
-func (e *streamEnv) start() {
+func (e *streamEnv) Start() {
 	require.NoError(e.t, e.reader.startLoops())
+}
+
+func (e *streamEnv) readerReceiveWaitClose(callback func()) {
+	e.stream.EXPECT().Recv().Do(func() {
+		if callback != nil {
+			callback()
+		}
+		<-e.ctx.Done()
+	}).Return(nil, errors.New("test reader closed"))
+}
+
+func (e *streamEnv) SendAndSetCallback(mess rawtopicreader.ServerMessage, callback func()) {
+	if mess.StatusData().Status == 0 {
+		mess.SetStatus(rawydb.StatusSuccess)
+	}
+	e.messagesFromServerToClient <- testStreamResult{mess: mess, nextMessageCallback: callback}
+}
+
+func (e *streamEnv) WaitReceived() {
+	e.messagesFromServerToClient <- testStreamResult{waitOnly: true}
+}
+
+func (e *streamEnv) receiveMessageHandler() (rawtopicreader.ServerMessage, error) {
+	if e.ctx.Err() != nil {
+		return nil, e.ctx.Err()
+	}
+
+	var callback func()
+	e.m.WithLock(func() {
+		callback = e.nextMessageNeedCallback
+		e.nextMessageNeedCallback = nil
+	})
+
+	if callback != nil {
+		callback()
+	}
+
+readMessages:
+	for {
+		select {
+		case <-e.ctx.Done():
+			return nil, e.ctx.Err()
+		case res := <-e.messagesFromServerToClient:
+			if res.waitOnly {
+				continue readMessages
+			}
+			e.m.WithLock(func() {
+				e.nextMessageNeedCallback = res.nextMessageCallback
+			})
+			return res.mess, res.err
+		}
+	}
 }

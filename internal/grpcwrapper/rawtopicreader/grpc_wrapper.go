@@ -179,8 +179,12 @@ func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.StreamingReadS
 	// TODO
 }
 
-func (s ServerMessageMetadata) StatusData() ServerMessageMetadata {
-	return s
+func (m *ServerMessageMetadata) StatusData() ServerMessageMetadata {
+	return *m
+}
+
+func (m *ServerMessageMetadata) SetStatus(status rawydb.StatusCode) {
+	m.Status = status
 }
 
 type YdbIssueMessage struct{}
@@ -188,6 +192,7 @@ type YdbIssueMessage struct{}
 type ServerMessage interface {
 	isServerMessage()
 	StatusData() ServerMessageMetadata
+	SetStatus(status rawydb.StatusCode)
 }
 
 type serverMessageImpl struct{}

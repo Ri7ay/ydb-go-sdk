@@ -115,8 +115,12 @@ func TopicReaderOnPartitionReadStart(t TopicReader, partitionContext context.Con
 	p.Offset = offset
 	t.onPartitionReadStart(p)
 }
-func TopicReaderOnPartitionReadStop(t TopicReader, graceful bool) {
+func TopicReaderOnPartitionReadStop(t TopicReader, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, graceful bool) {
 	var p OnPartitionReadStopInfo
+	p.PartitionContext = partitionContext
+	p.Topic = topic
+	p.PartitionID = partitionID
+	p.PartitionSessionID = partitionSessionID
 	p.Graceful = graceful
 	t.onPartitionReadStop(p)
 }

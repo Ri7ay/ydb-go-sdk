@@ -9,7 +9,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
-type ReaderOption func()
+type ReaderOption func(cfg *topicStreamReaderConfig)
 
 // WithBatchPreferCount set internal prefer count for ReadMessageBatch
 // result messages count may be smaller (when max lag timeout is end) or greater (some extra messages from last server batch)
@@ -28,7 +28,9 @@ func WithBatchMaxTimeLag(duration time.Duration) ReaderOption {
 }
 
 func WithBaseContext(ctx context.Context) ReaderOption {
-	panic("not implemented")
+	return func(cfg *topicStreamReaderConfig) {
+		cfg.BaseContext = ctx
+	}
 }
 
 func WithMaxMemoryUsageBytes(size int) ReaderOption {
@@ -44,7 +46,9 @@ func WithSyncCommit(enabled bool) ReaderOption {
 }
 
 func WithReadSelector(readSelector ReadSelector) ReaderOption {
-	panic("not implemented")
+	return func(cfg *topicStreamReaderConfig) {
+		cfg.ReadSelectors = append(cfg.ReadSelectors, readSelector.clone())
+	}
 }
 
 type GetPartitionStartOffsetRequest struct {
@@ -68,6 +72,8 @@ func WithGetPartitionStartOffset(f func(ctx context.Context, req GetPartitionSta
 	panic("not implemented")
 }
 
-func WithTracer(reader trace.TopicReader) ReaderOption {
-	panic("not implemented")
+func WithTracer(tracer trace.TopicReader) ReaderOption {
+	return func(cfg *topicStreamReaderConfig) {
+		cfg.Tracer = cfg.Tracer.Compose(tracer)
+	}
 }

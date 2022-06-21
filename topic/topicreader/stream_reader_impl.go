@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
+	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
 var errPartitionStopped = xerrors.Wrap(errors.New("ydb: partition stopped"))
@@ -25,6 +26,7 @@ type topicStreamReaderImpl struct {
 	cfg    topicStreamReaderConfig
 	ctx    context.Context
 	cancel xcontext.CancelErrFunc
+	tracer trace.TopicReader
 
 	freeBytes         chan int
 	sessionController partitionSessionStorage
@@ -48,6 +50,7 @@ type topicStreamReaderConfig struct {
 	CredUpdateInterval   time.Duration
 	Consumer             string
 	ReadSelectors        []ReadSelector
+	Tracer               trace.TopicReader
 }
 
 func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
@@ -171,7 +174,7 @@ func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context)
 
 		switch m := mess.(type) {
 		case *rawtopicreader.StopPartitionSessionRequest:
-			r.onStopPartitionSessionRequestFromBuffer(ctx, m)
+			r.onStopPartitionSessionRequestFromBuffer(m)
 		case *rawtopicreader.PartitionSessionStatusResponse:
 			r.onPartitionSessionStatusResponseFromBuffer(ctx, m)
 		default:
@@ -182,8 +185,23 @@ func (r *topicStreamReaderImpl) consumeRawMessageFromBuffer(ctx context.Context)
 	}
 }
 
-func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(ctx context.Context, mess *rawtopicreader.StopPartitionSessionRequest) {
-	panic("not implemented")
+func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
+	mess *rawtopicreader.StopPartitionSessionRequest,
+) error {
+	session, err := r.sessionController.Remove(mess.PartitionSessionID)
+	if err != nil {
+		return err
+	}
+
+	trace.TopicReaderOnPartitionReadStop(
+		r.cfg.Tracer,
+		session.Context(),
+		session.Topic,
+		session.PartitionID,
+		session.partitionSessionID.ToInt64(),
+		mess.Graceful,
+	)
+	return nil
 }
 
 func (r *topicStreamReaderImpl) onPartitionSessionStatusResponseFromBuffer(ctx context.Context, m *rawtopicreader.PartitionSessionStatusResponse) {
