@@ -56,9 +56,9 @@ func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
 	sort.Slice(commits, func(i, j int) bool {
 		cI, cJ := &commits[i], &commits[j]
 		switch {
-		case cI.partitionSessionID < cJ.partitionSessionID:
+		case cI.partitionSession.partitionSessionID < cJ.partitionSession.partitionSessionID:
 			return true
-		case cJ.partitionSessionID < cI.partitionSessionID:
+		case cJ.partitionSession.partitionSessionID < cI.partitionSession.partitionSessionID:
 			return false
 		case cI.Offset < cJ.Offset:
 			return true
@@ -71,7 +71,7 @@ func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
 	lastCommit := &newCommits[0]
 	for i := range commits[1:] {
 		commit := &commits[i]
-		if lastCommit.partitionSessionID == commit.partitionSessionID && lastCommit.ToOffset == commit.Offset {
+		if lastCommit.partitionSession.partitionSessionID == commit.partitionSession.partitionSessionID && lastCommit.ToOffset == commit.Offset {
 			lastCommit.ToOffset = commit.ToOffset
 		} else {
 			newCommits = append(newCommits, *commit)
@@ -93,7 +93,7 @@ func commitsToPartitions(commits []CommitOffset) []rawtopicreader.PartitionCommi
 	}
 
 	partitionOffsets := make([]rawtopicreader.PartitionCommitOffset, 0, len(commits))
-	partitionOffsets = append(partitionOffsets, newPartition(commits[0].partitionSessionID))
+	partitionOffsets = append(partitionOffsets, newPartition(commits[0].partitionSession.partitionSessionID))
 	partition := &partitionOffsets[0]
 
 	for i := range commits {
@@ -102,8 +102,8 @@ func commitsToPartitions(commits []CommitOffset) []rawtopicreader.PartitionCommi
 			Start: commit.Offset,
 			End:   commit.ToOffset,
 		}
-		if partition.PartitionSessionID != commit.partitionSessionID {
-			partitionOffsets = append(partitionOffsets, newPartition(commit.partitionSessionID))
+		if partition.PartitionSessionID != commit.partitionSession.partitionSessionID {
+			partitionOffsets = append(partitionOffsets, newPartition(commit.partitionSession.partitionSessionID))
 			partition = &partitionOffsets[len(partitionOffsets)-1]
 		}
 		partition.Offsets = append(partition.Offsets, offsetsRange)

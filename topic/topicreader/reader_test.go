@@ -121,7 +121,7 @@ func TestReader_Commit(t *testing.T) {
 		Offset:   1,
 		ToOffset: 10,
 	}}
-	expectedBatchOk[0].partitionSessionID.FromInt64(10)
+	expectedBatchOk[0].partitionSession = &PartitionSession{partitionSessionID: 10}
 	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
 	require.NoError(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchOk[0]}))
 
@@ -129,7 +129,8 @@ func TestReader_Commit(t *testing.T) {
 		Offset:   15,
 		ToOffset: 20,
 	}}
-	expectedBatchErr[0].partitionSessionID.FromInt64(30)
+
+	expectedBatchErr[0].partitionSession = &PartitionSession{partitionSessionID: 30}
 	testErr := errors.New("test err")
 	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
 	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchErr[0]}), testErr)
@@ -146,7 +147,7 @@ func TestReader_CommitBatch(t *testing.T) {
 		Offset:   1,
 		ToOffset: 10,
 	}}
-	expectedBatchOk[0].partitionSessionID.FromInt64(10)
+	expectedBatchOk[0].partitionSession = &PartitionSession{partitionSessionID: 10}
 	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
 	require.NoError(t, reader.CommitBatch(context.Background(), expectedBatchOk))
 
@@ -154,7 +155,7 @@ func TestReader_CommitBatch(t *testing.T) {
 		Offset:   15,
 		ToOffset: 20,
 	}}
-	expectedBatchErr[0].partitionSessionID.FromInt64(30)
+	expectedBatchErr[0].partitionSession = &PartitionSession{partitionSessionID: 30}
 	testErr := errors.New("test err")
 	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
 	require.ErrorIs(t, reader.CommitBatch(context.Background(), expectedBatchErr), testErr)
@@ -177,8 +178,8 @@ func TestReader_CommitMessages(t *testing.T) {
 			ToOffset: 3,
 		},
 	}
-	expectedBatchOk[0].partitionSessionID.FromInt64(10)
-	expectedBatchOk[1].partitionSessionID.FromInt64(10)
+	expectedBatchOk[0].partitionSession = &PartitionSession{partitionSessionID: 10}
+	expectedBatchOk[1].partitionSession = expectedBatchOk[0].partitionSession
 	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
 	require.NoError(t, reader.CommitMessages(context.Background(),
 		Message{CommitOffset: expectedBatchOk[0]}, Message{CommitOffset: expectedBatchOk[1]},
@@ -194,8 +195,8 @@ func TestReader_CommitMessages(t *testing.T) {
 			ToOffset: 5,
 		},
 	}
-	expectedBatchErr[0].partitionSessionID.FromInt64(30)
-	expectedBatchErr[1].partitionSessionID.FromInt64(30)
+	expectedBatchErr[0].partitionSession = &PartitionSession{partitionSessionID: 30}
+	expectedBatchErr[1].partitionSession = expectedBatchErr[0].partitionSession
 	testErr := errors.New("test err")
 	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
 	require.ErrorIs(t, reader.CommitMessages(context.Background(),

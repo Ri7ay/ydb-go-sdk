@@ -18,15 +18,14 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
-var errPartitionStopped = xerrors.Wrap(errors.New("ydb: partition stopped"))
+var ErrPartitionStopped = xerrors.Wrap(errors.New("ydb: pq partition stopped"))
 
 type partitionSessionID = rawtopicreader.PartitionSessionID
 
 type topicStreamReaderImpl struct {
-	cfg         topicStreamReaderConfig
-	ctx         context.Context
-	cancel      xcontext.CancelErrFunc
-	wantCommits bool
+	cfg    topicStreamReaderConfig
+	ctx    context.Context
+	cancel xcontext.CancelErrFunc
 
 	freeBytes         chan int
 	sessionController partitionSessionStorage
@@ -44,7 +43,6 @@ type topicStreamReaderImpl struct {
 }
 
 type topicStreamReaderConfig struct {
-	DefaultBatchConfig              readMessageBatchOptions
 	BaseContext                     context.Context
 	BufferSizeProtoBytes            int
 	Cred                            credentials.Credentials
@@ -53,6 +51,7 @@ type topicStreamReaderConfig struct {
 	ReadSelectors                   []ReadSelector
 	Tracer                          trace.TopicReader
 	GetPartitionStartOffsetCallback GetPartitionStartOffsetFunc
+	CommitMode                      CommitMode
 }
 
 func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
@@ -78,6 +77,7 @@ func newTopicStreamReaderConfig() topicStreamReaderConfig {
 		BaseContext:          context.Background(),
 		BufferSizeProtoBytes: 1024 * 1024,
 		CredUpdateInterval:   time.Hour,
+		CommitMode:           CommitModeAsync,
 	}
 }
 
@@ -114,7 +114,6 @@ func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderCo
 		batcher:               newBatcher(),
 		backgroundWorkers:     *backgroundworkers.New(stopPump),
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
-		wantCommits:           true,
 	}
 	res.sessionController.init()
 	return res
@@ -254,6 +253,24 @@ func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) 
 		CommitOffsets: offset.toPartitionsOffsets(),
 	}
 	return r.stream.Send(req)
+}
+
+func (r *topicStreamReaderImpl) checkCommitOffsets(commitBatch CommitBatch) error {
+	for i := range commitBatch {
+		session := commitBatch[i].partitionSession
+		if session == nil {
+			return xerrors.NewWithStackTrace("ydb: commit with nil partition session")
+		}
+		if session.Context().Err() != nil {
+			return xerrors.WithStackTrace(fmt.Errorf("ydb: commit error: %w", ErrPartitionStopped))
+		}
+
+		ownSession, err := r.sessionController.Get(session.partitionSessionID)
+		if err != nil || session != ownSession {
+			return xerrors.NewWithStackTrace("ydb: commit with session from other reader")
+		}
+	}
+	return nil
 }
 
 func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
@@ -539,7 +556,7 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(m *rawt
 	}
 
 	respMessage.ReadOffset.FromInt64Pointer(forceOffset)
-	if r.wantCommits {
+	if r.cfg.CommitMode.commitsEnabled() {
 		respMessage.CommitOffset.FromInt64Pointer(forceOffset)
 	}
 
@@ -566,7 +583,7 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequest(m *rawtopicreader.
 	}
 
 	if !m.Graceful {
-		session.close(errPartitionStopped)
+		session.close(ErrPartitionStopped)
 	}
 
 	return r.batcher.PushRawMessage(session, m)

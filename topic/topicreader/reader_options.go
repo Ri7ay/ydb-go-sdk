@@ -9,10 +9,10 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
-type ReaderOption func(cfg *topicStreamReaderConfig)
+type ReaderOption func(cfg *readerConfig)
 
 func WithBatchOptions(options ...ReadBatchOption) ReaderOption {
-	return func(cfg *topicStreamReaderConfig) {
+	return func(cfg *readerConfig) {
 		batchOptions := newReadMessageBatchOptions()
 		for _, opt := range options {
 			opt(&batchOptions)
@@ -26,7 +26,7 @@ func WithBatchMaxTimeLag(duration time.Duration) ReaderOption {
 }
 
 func WithBaseContext(ctx context.Context) ReaderOption {
-	return func(cfg *topicStreamReaderConfig) {
+	return func(cfg *readerConfig) {
 		cfg.BaseContext = ctx
 	}
 }
@@ -39,12 +39,24 @@ func WithRetry(backoff backoff.Backoff) ReaderOption {
 	panic("not implemented")
 }
 
-func WithSyncCommit(enabled bool) ReaderOption {
+type CommitMode int
+
+const (
+	CommitModeAsync CommitMode = iota // default
+	CommitModeNone
+	CommitModeSync
+)
+
+func (m CommitMode) commitsEnabled() bool {
+	return m != CommitModeNone
+}
+
+func WithCommitMode(mode CommitMode) ReaderOption {
 	panic("not implemented")
 }
 
 func WithReadSelector(readSelector ...ReadSelector) ReaderOption {
-	return func(cfg *topicStreamReaderConfig) {
+	return func(cfg *readerConfig) {
 		cfg.ReadSelectors = make([]ReadSelector, len(readSelector))
 		for i := range readSelector {
 			cfg.ReadSelectors[i] = readSelector[i].clone()
@@ -71,13 +83,13 @@ type GetPartitionStartOffsetFunc func(
 ) (res GetPartitionStartOffsetResponse, err error)
 
 func WithGetPartitionStartOffset(f GetPartitionStartOffsetFunc) ReaderOption {
-	return func(cfg *topicStreamReaderConfig) {
+	return func(cfg *readerConfig) {
 		cfg.GetPartitionStartOffsetCallback = f
 	}
 }
 
 func WithTracer(tracer trace.TopicReader) ReaderOption {
-	return func(cfg *topicStreamReaderConfig) {
+	return func(cfg *readerConfig) {
 		cfg.Tracer = cfg.Tracer.Compose(tracer)
 	}
 }

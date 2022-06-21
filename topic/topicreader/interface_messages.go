@@ -62,8 +62,7 @@ type CommitOffset struct { // Кусочек, необходимый для ко
 	Offset   rawtopicreader.Offset
 	ToOffset rawtopicreader.Offset
 
-	// TODO: switch to partition session pointer
-	partitionSessionID rawtopicreader.PartitionSessionID
+	partitionSession *PartitionSession
 }
 
 func (c CommitOffset) GetCommitOffset() CommitOffset {

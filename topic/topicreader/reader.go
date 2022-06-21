@@ -56,19 +56,19 @@ func NewReader(
 	readSelectors []ReadSelector,
 	opts ...ReaderOption,
 ) *Reader {
-	readerConfig := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
+	cfg := convertNewParamsToStreamConfig(consumer, readSelectors, opts...)
 	readerConnector := func(ctx context.Context) (batchedStreamReader, error) {
 		stream, err := connector(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		return newTopicStreamReader(stream, readerConfig)
+		return newTopicStreamReader(stream, cfg.topicStreamReaderConfig)
 	}
 
 	res := &Reader{
 		reader:             newReaderReconnector(connectCtx, readerConnector),
-		defaultBatchConfig: readerConfig.DefaultBatchConfig,
+		defaultBatchConfig: cfg.DefaultBatchConfig,
 	}
 	res.initChannels()
 
@@ -156,7 +156,6 @@ func (r *Reader) messageReaderLoop(ctx context.Context) {
 		}
 
 		batch, err := r.ReadMessageBatch(ctx)
-
 		// TODO: log
 		if err != nil {
 			continue
@@ -174,8 +173,13 @@ func (r *Reader) messageReaderLoop(ctx context.Context) {
 	}
 }
 
-func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...ReaderOption) (cfg topicStreamReaderConfig) {
-	cfg = newTopicStreamReaderConfig()
+type readerConfig struct {
+	DefaultBatchConfig readMessageBatchOptions
+	topicStreamReaderConfig
+}
+
+func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...ReaderOption) (cfg readerConfig) {
+	cfg.topicStreamReaderConfig = newTopicStreamReaderConfig()
 	cfg.Consumer = consumer
 
 	// make own copy, for prevent changing internal states if readSelectors will change outside
