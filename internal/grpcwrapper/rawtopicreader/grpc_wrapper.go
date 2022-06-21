@@ -29,6 +29,10 @@ func (id PartitionSessionID) ToInt64() int64 {
 
 type Offset int64
 
+func NewOffset(v int64) Offset {
+	return Offset(v)
+}
+
 func (offset *Offset) FromInt64(v int64) {
 	*offset = Offset(v)
 }
@@ -50,6 +54,9 @@ func (offset *OptionalOffset) FromInt64Pointer(v *int64) {
 		offset.HasValue = true
 		offset.Offset.FromInt64(*v)
 	}
+}
+func (offset *OptionalOffset) FromInt64(v int64) {
+	offset.FromInt64Pointer(&v)
 }
 
 func (offset OptionalOffset) ToInt64() int64 {

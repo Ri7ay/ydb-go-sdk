@@ -52,24 +52,24 @@ func WithReadSelector(readSelector ReadSelector) ReaderOption {
 }
 
 type GetPartitionStartOffsetRequest struct {
-	Topic       string
-	PartitionID int64
+	Session *PartitionSession
 }
 type GetPartitionStartOffsetResponse struct {
-	readOffset   rawtopicreader.Offset
-	commitOffset rawtopicreader.Offset
-
-	readOffsetUsed   bool
-	commitOffsetUsed bool
+	startOffset     rawtopicreader.Offset
+	startOffsetUsed bool
 }
 
 func (r *GetPartitionStartOffsetResponse) StartWithAutoCommitFrom(offset int64) {
-	r.readOffset.FromInt64(offset)
-	r.readOffsetUsed = true
+	r.startOffset.FromInt64(offset)
+	r.startOffsetUsed = true
 }
 
-func WithGetPartitionStartOffset(f func(ctx context.Context, req GetPartitionStartOffsetRequest) (res GetPartitionStartOffsetResponse, err error)) ReaderOption {
-	panic("not implemented")
+type GetPartitionStartOffsetFunc func(ctx context.Context, req GetPartitionStartOffsetRequest) (res GetPartitionStartOffsetResponse, err error)
+
+func WithGetPartitionStartOffset(f GetPartitionStartOffsetFunc) ReaderOption {
+	return func(cfg *topicStreamReaderConfig) {
+		cfg.GetPartitionStartOffsetCallback = f
+	}
 }
 
 func WithTracer(tracer trace.TopicReader) ReaderOption {

@@ -107,20 +107,22 @@ func (t TopicReader) onPartitionCommittedNotify(o OnPartitionCommittedInfo) {
 	}
 	fn(o)
 }
-func TopicReaderOnPartitionReadStart(t TopicReader, partitionContext context.Context, topic string, partitionID int64, offset int64) {
+func TopicReaderOnPartitionReadStart(t TopicReader, partitionContext context.Context, topic string, partitionID int64, readOffset *int64, commitOffset *int64) {
 	var p OnPartitionReadStartInfo
 	p.PartitionContext = partitionContext
 	p.Topic = topic
 	p.PartitionID = partitionID
-	p.Offset = offset
+	p.ReadOffset = readOffset
+	p.CommitOffset = commitOffset
 	t.onPartitionReadStart(p)
 }
-func TopicReaderOnPartitionReadStop(t TopicReader, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, graceful bool) {
+func TopicReaderOnPartitionReadStop(t TopicReader, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, committedOffset int64, graceful bool) {
 	var p OnPartitionReadStopInfo
 	p.PartitionContext = partitionContext
 	p.Topic = topic
 	p.PartitionID = partitionID
 	p.PartitionSessionID = partitionSessionID
+	p.CommittedOffset = committedOffset
 	p.Graceful = graceful
 	t.onPartitionReadStop(p)
 }

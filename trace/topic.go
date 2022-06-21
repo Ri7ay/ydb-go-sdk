@@ -19,13 +19,15 @@ type (
 		PartitionContext context.Context
 		Topic            string
 		PartitionID      int64
-		Offset           int64
+		ReadOffset       *int64
+		CommitOffset     *int64
 	}
 	OnPartitionReadStopInfo struct {
 		PartitionContext   context.Context
 		Topic              string
 		PartitionID        int64
 		PartitionSessionID int64
+		CommittedOffset    int64
 		Graceful           bool
 	}
 

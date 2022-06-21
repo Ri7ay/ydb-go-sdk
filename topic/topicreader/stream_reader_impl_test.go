@@ -10,6 +10,8 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -36,19 +38,85 @@ func TestTopicStreamReaderImpl_Create(t *testing.T) {
 }
 
 func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
-	t.Run("GracefulFalse", func(t *testing.T) {
+	t.Run("GracefulFalseCancelPartitionContext", func(t *testing.T) {
 		e := newTopicReaderTestEnv(t)
 		e.Start()
 
 		require.NoError(t, e.partitionSession.Context().Err())
 
 		// stop partition
-		e.SendAndSetCallback(
+		e.SendFromServerAndSetNextCallback(
 			&rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: e.partitionSessionID},
 			func() {
 				require.Error(t, e.partitionSession.Context().Err())
 			})
-		e.WaitReceived()
+		e.WaitProcessed()
+	})
+	t.Run("TraceGracefulTrue", func(t *testing.T) {
+		e := newTopicReaderTestEnv(t)
+
+		readMessagesCtx, readMessagesCtxCancel := xcontext.WithErrCancel(context.Background())
+		committedOffset := int64(222)
+
+		e.reader.cfg.Tracer.OnPartitionReadStop = func(info trace.OnPartitionReadStopInfo) {
+			require.Equal(t, e.partitionSession.PartitionID, info.PartitionID)
+			require.Equal(t, e.partitionSession.partitionSessionID.ToInt64(), info.PartitionSessionID)
+			require.Equal(t, e.partitionSession.ctx, info.PartitionContext)
+			require.Equal(t, e.partitionSession.Topic, info.Topic)
+			require.Equal(t, true, info.Graceful)
+			require.Equal(t, committedOffset, info.CommittedOffset)
+
+			require.NoError(t, info.PartitionContext.Err())
+
+			readMessagesCtxCancel(errors.New("test tracer finished"))
+		}
+
+		e.Start()
+
+		e.stream.EXPECT().Send(&rawtopicreader.StopPartitionSessionResponse{
+			PartitionSessionID: e.partitionSessionID,
+		}).Return(nil)
+
+		e.SendFromServer(&rawtopicreader.StopPartitionSessionRequest{
+			PartitionSessionID: e.partitionSessionID,
+			Graceful:           true,
+			CommittedOffset:    rawtopicreader.NewOffset(committedOffset),
+		})
+
+		_, err := e.reader.ReadMessageBatch(readMessagesCtx, newReadMessageBatchOptions())
+		require.Error(t, err)
+		require.Error(t, readMessagesCtx.Err())
+	})
+	t.Run("TraceGracefulFalse", func(t *testing.T) {
+		e := newTopicReaderTestEnv(t)
+
+		readMessagesCtx, readMessagesCtxCancel := xcontext.WithErrCancel(context.Background())
+		committedOffset := int64(222)
+
+		e.reader.cfg.Tracer.OnPartitionReadStop = func(info trace.OnPartitionReadStopInfo) {
+			require.Equal(t, e.partitionSession.PartitionID, info.PartitionID)
+			require.Equal(t, e.partitionSession.partitionSessionID.ToInt64(), info.PartitionSessionID)
+			require.Equal(t, e.partitionSession.ctx, info.PartitionContext)
+			require.Equal(t, e.partitionSession.Topic, info.Topic)
+			require.Equal(t, false, info.Graceful)
+			require.Equal(t, committedOffset, info.CommittedOffset)
+
+			require.Error(t, info.PartitionContext.Err())
+
+			readMessagesCtxCancel(errors.New("test tracer finished"))
+		}
+
+		e.Start()
+
+		e.SendFromServer(&rawtopicreader.StopPartitionSessionRequest{
+			PartitionSessionID: e.partitionSessionID,
+			Graceful:           false,
+			CommittedOffset:    rawtopicreader.NewOffset(committedOffset),
+		})
+
+		_, err := e.reader.ReadMessageBatch(readMessagesCtx, newReadMessageBatchOptions())
+		require.Error(t, err)
+		require.Error(t, readMessagesCtx.Err())
 	})
 }
 
@@ -144,14 +212,18 @@ func (e *streamEnv) readerReceiveWaitClose(callback func()) {
 	}).Return(nil, errors.New("test reader closed"))
 }
 
-func (e *streamEnv) SendAndSetCallback(mess rawtopicreader.ServerMessage, callback func()) {
+func (e *streamEnv) SendFromServer(mess rawtopicreader.ServerMessage) {
+	e.SendFromServerAndSetNextCallback(mess, nil)
+}
+
+func (e *streamEnv) SendFromServerAndSetNextCallback(mess rawtopicreader.ServerMessage, callback func()) {
 	if mess.StatusData().Status == 0 {
 		mess.SetStatus(rawydb.StatusSuccess)
 	}
 	e.messagesFromServerToClient <- testStreamResult{mess: mess, nextMessageCallback: callback}
 }
 
-func (e *streamEnv) WaitReceived() {
+func (e *streamEnv) WaitProcessed() {
 	e.messagesFromServerToClient <- testStreamResult{waitOnly: true}
 }
 
