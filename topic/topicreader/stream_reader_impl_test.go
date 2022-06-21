@@ -59,12 +59,15 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 		committedOffset := int64(222)
 
 		e.reader.cfg.Tracer.OnPartitionReadStop = func(info trace.OnPartitionReadStopInfo) {
-			require.Equal(t, e.partitionSession.PartitionID, info.PartitionID)
-			require.Equal(t, e.partitionSession.partitionSessionID.ToInt64(), info.PartitionSessionID)
-			require.Equal(t, e.partitionSession.ctx, info.PartitionContext)
-			require.Equal(t, e.partitionSession.Topic, info.Topic)
-			require.Equal(t, true, info.Graceful)
-			require.Equal(t, committedOffset, info.CommittedOffset)
+			expected := trace.OnPartitionReadStopInfo{
+				PartitionContext:   e.partitionSession.ctx,
+				Topic:              e.partitionSession.Topic,
+				PartitionID:        e.partitionSession.PartitionID,
+				PartitionSessionID: e.partitionSession.partitionSessionID.ToInt64(),
+				CommittedOffset:    committedOffset,
+				Graceful:           true,
+			}
+			require.Equal(t, expected, info)
 
 			require.NoError(t, info.PartitionContext.Err())
 
@@ -94,13 +97,15 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 		committedOffset := int64(222)
 
 		e.reader.cfg.Tracer.OnPartitionReadStop = func(info trace.OnPartitionReadStopInfo) {
-			require.Equal(t, e.partitionSession.PartitionID, info.PartitionID)
-			require.Equal(t, e.partitionSession.partitionSessionID.ToInt64(), info.PartitionSessionID)
-			require.Equal(t, e.partitionSession.ctx, info.PartitionContext)
-			require.Equal(t, e.partitionSession.Topic, info.Topic)
-			require.Equal(t, false, info.Graceful)
-			require.Equal(t, committedOffset, info.CommittedOffset)
-
+			expected := trace.OnPartitionReadStopInfo{
+				PartitionContext:   e.partitionSession.ctx,
+				Topic:              e.partitionSession.Topic,
+				PartitionID:        e.partitionSession.PartitionID,
+				PartitionSessionID: e.partitionSession.partitionSessionID.ToInt64(),
+				CommittedOffset:    committedOffset,
+				Graceful:           false,
+			}
+			require.Equal(t, expected, info)
 			require.Error(t, info.PartitionContext.Err())
 
 			readMessagesCtxCancel(errors.New("test tracer finished"))
