@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
@@ -210,7 +211,7 @@ func TestBatcher_Pop(t *testing.T) {
 func TestBatcher_Find(t *testing.T) {
 	t.Run("Empty", func(t *testing.T) {
 		b := newBatcher()
-		findRes := b.findNeedLock(0)
+		findRes := b.findNeedLock(0, nil)
 		require.False(t, findRes.Ok)
 	})
 	t.Run("FoundEmptyFilter", func(t *testing.T) {
@@ -221,7 +222,7 @@ func TestBatcher_Find(t *testing.T) {
 
 		require.NoError(t, b.PushBatch(batch))
 
-		findRes := b.findNeedLock(0, batcherWaiter{})
+		findRes := b.findNeedLock(0, []batcherWaiter{{}})
 		expectedResult := batcherResultCandidate{
 			Key:         session,
 			Result:      newBatcherItemBatch(batch),
@@ -240,7 +241,7 @@ func TestBatcher_Find(t *testing.T) {
 
 		require.NoError(t, b.PushBatch(batch))
 
-		findRes := b.findNeedLock(0, batcherWaiter{Options: batcherGetOptions{MaxCount: 1}})
+		findRes := b.findNeedLock(0, []batcherWaiter{{Options: batcherGetOptions{MaxCount: 1}}})
 
 		expectedResult := newBatcherItemBatch(mustNewBatch(session, []Message{{WrittenAt: testTime(1)}}))
 		expectedRestBatch := newBatcherItemBatch(mustNewBatch(session, []Message{{WrittenAt: testTime(2)}}))

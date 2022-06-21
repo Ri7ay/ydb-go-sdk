@@ -11,16 +11,14 @@ import (
 
 type ReaderOption func(cfg *topicStreamReaderConfig)
 
-// WithBatchPreferCount set internal prefer count for ReadMessageBatch
-// result messages count may be smaller (when max lag timeout is end) or greater (some extra messages from last server batch)
-func WithBatchPreferCount(preferCount int) ReaderOption {
-	panic("not implemented")
-}
-
-// WithBatchMaxCount set maximum limit of messages in ReadMessageBatch method
-// see WithBatchPreferCount if you don't need strong up limit
-func WithBatchMaxCount(maxCount int) ReaderOption {
-	panic("not implemented")
+func WithBatchOptions(options ...ReadBatchOption) ReaderOption {
+	return func(cfg *topicStreamReaderConfig) {
+		batchOptions := newReadMessageBatchOptions()
+		for _, opt := range options {
+			opt(&batchOptions)
+		}
+		cfg.DefaultBatchConfig = batchOptions
+	}
 }
 
 func WithBatchMaxTimeLag(duration time.Duration) ReaderOption {
@@ -45,9 +43,12 @@ func WithSyncCommit(enabled bool) ReaderOption {
 	panic("not implemented")
 }
 
-func WithReadSelector(readSelector ReadSelector) ReaderOption {
+func WithReadSelector(readSelector ...ReadSelector) ReaderOption {
 	return func(cfg *topicStreamReaderConfig) {
-		cfg.ReadSelectors = append(cfg.ReadSelectors, readSelector.clone())
+		cfg.ReadSelectors = make([]ReadSelector, len(readSelector))
+		for i := range readSelector {
+			cfg.ReadSelectors[i] = readSelector[i].clone()
+		}
 	}
 }
 
@@ -59,12 +60,15 @@ type GetPartitionStartOffsetResponse struct {
 	startOffsetUsed bool
 }
 
-func (r *GetPartitionStartOffsetResponse) StartWithAutoCommitFrom(offset int64) {
+func (r *GetPartitionStartOffsetResponse) StartFrom(offset int64) {
 	r.startOffset.FromInt64(offset)
 	r.startOffsetUsed = true
 }
 
-type GetPartitionStartOffsetFunc func(ctx context.Context, req GetPartitionStartOffsetRequest) (res GetPartitionStartOffsetResponse, err error)
+type GetPartitionStartOffsetFunc func(
+	ctx context.Context,
+	req GetPartitionStartOffsetRequest,
+) (res GetPartitionStartOffsetResponse, err error)
 
 func WithGetPartitionStartOffset(f GetPartitionStartOffsetFunc) ReaderOption {
 	return func(cfg *topicStreamReaderConfig) {

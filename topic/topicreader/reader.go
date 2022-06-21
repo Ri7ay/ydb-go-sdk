@@ -29,8 +29,9 @@ type RawStreamReader interface {
 type TopicSteamReaderConnect func(ctx context.Context) (RawStreamReader, error)
 
 type Reader struct {
-	reader     batchedStreamReader
-	oneMessage chan *Message
+	reader             batchedStreamReader
+	defaultBatchConfig readMessageBatchOptions
+	oneMessage         chan *Message
 
 	messageReaderLoopOnce sync.Once
 	background            backgroundworkers.BackgroundWorker
@@ -38,6 +39,10 @@ type Reader struct {
 
 type readMessageBatchOptions struct {
 	batcherGetOptions
+}
+
+func (o *readMessageBatchOptions) clone() readMessageBatchOptions {
+	return *o
 }
 
 func newReadMessageBatchOptions() readMessageBatchOptions {
@@ -62,7 +67,8 @@ func NewReader(
 	}
 
 	res := &Reader{
-		reader: newReaderReconnector(connectCtx, readerConnector),
+		reader:             newReaderReconnector(connectCtx, readerConnector),
+		defaultBatchConfig: readerConfig.DefaultBatchConfig,
 	}
 	res.initChannels()
 
@@ -82,7 +88,7 @@ func (r *Reader) Close() error {
 // ReadMessageBatch read batch of messages.
 // Batch is collection of messages, which can be atomically committed
 func (r *Reader) ReadMessageBatch(ctx context.Context, opts ...ReadBatchOption) (Batch, error) {
-	readOptions := newReadMessageBatchOptions()
+	readOptions := r.defaultBatchConfig.clone()
 
 	for _, optFunc := range opts {
 		optFunc(&readOptions)
@@ -106,9 +112,6 @@ forReadBatch:
 	}
 }
 
-// ReadBatchOption для различных пожеланий к батчу вроде WithMaxMessages(int)
-type ReadBatchOption func(options *readMessageBatchOptions)
-
 type ReadSelector struct {
 	Stream     scheme.Path
 	Partitions []int64
@@ -124,15 +127,8 @@ func (s ReadSelector) clone() ReadSelector {
 	return dst
 }
 
-func ReadExplicitMessagesCount(count int) ReadBatchOption {
-	return func(options *readMessageBatchOptions) {
-		options.MinCount = count
-		options.MaxCount = count
-	}
-}
-
 func (r *Reader) ReadMessage(ctx context.Context) (Message, error) {
-	res, err := r.ReadMessageBatch(ctx, ReadExplicitMessagesCount(1))
+	res, err := r.ReadMessageBatch(ctx, readExplicitMessagesCount(1))
 	if err != nil {
 		return Message{}, err
 	}
@@ -160,6 +156,7 @@ func (r *Reader) messageReaderLoop(ctx context.Context) {
 		}
 
 		batch, err := r.ReadMessageBatch(ctx)
+
 		// TODO: log
 		if err != nil {
 			continue

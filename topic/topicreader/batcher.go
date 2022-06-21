@@ -82,6 +82,10 @@ type batcherGetOptions struct {
 	rawMessagesOnly bool
 }
 
+func newBatcherGetOptions() batcherGetOptions {
+	return batcherGetOptions{}
+}
+
 func (o batcherGetOptions) cutBatchItemsHead(items batcherMessageOrderItems) (
 	head batcherMessageOrderItem,
 	rest batcherMessageOrderItems,
@@ -133,7 +137,7 @@ func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
 func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMessageOrderItem, err error) {
 	var findRes batcherResultCandidate
 	b.m.WithLock(func() {
-		findRes = b.findNeedLock(0, batcherWaiter{Options: opts})
+		findRes = b.findNeedLock(0, []batcherWaiter{{Options: opts}})
 		if !findRes.Ok {
 			return
 		}
@@ -150,6 +154,7 @@ func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMes
 			err = removeWaiterErr
 		}
 	}()
+
 	select {
 	case batch := <-waiter.Result:
 		return batch, nil
@@ -189,7 +194,7 @@ func (b *batcher) removeWaiterByID(waiterID int64) error {
 func (b *batcher) fireWaitersNeedLock() {
 	startIndex := 0
 	for {
-		resCandidate := b.findNeedLock(startIndex, b.waiters...)
+		resCandidate := b.findNeedLock(startIndex, b.waiters)
 		if !resCandidate.Ok {
 			return
 		}
@@ -240,7 +245,7 @@ func newBatcherResultCandidate(
 	}
 }
 
-func (b *batcher) findNeedLock(startIndex int, waiters ...batcherWaiter) batcherResultCandidate {
+func (b *batcher) findNeedLock(startIndex int, waiters []batcherWaiter) batcherResultCandidate {
 	if len(waiters) == 0 || len(b.messages) == 0 {
 		return batcherResultCandidate{}
 	}
@@ -253,7 +258,7 @@ func (b *batcher) findNeedLock(startIndex int, waiters ...batcherWaiter) batcher
 	for k, items := range b.messages {
 		head, rest, ok := rawMessageOpts.cutBatchItemsHead(items)
 		if ok {
-			return newBatcherResultCandidate(k, head, rest, -1, true)
+			return newBatcherResultCandidate(k, head, rest, len(waiters)-1, true)
 		}
 
 		if needBatchResult {

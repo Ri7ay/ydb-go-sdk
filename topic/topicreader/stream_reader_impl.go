@@ -44,6 +44,7 @@ type topicStreamReaderImpl struct {
 }
 
 type topicStreamReaderConfig struct {
+	DefaultBatchConfig              readMessageBatchOptions
 	BaseContext                     context.Context
 	BufferSizeProtoBytes            int
 	Cred                            credentials.Credentials
@@ -80,12 +81,18 @@ func newTopicStreamReaderConfig() topicStreamReaderConfig {
 	}
 }
 
-func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
+func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (_ *topicStreamReaderImpl, err error) {
+	defer func() {
+		if err != nil {
+			_ = stream.CloseSend()
+		}
+	}()
+
 	reader := newTopicStreamReaderStopped(stream, cfg)
-	if err := reader.initSession(); err != nil {
+	if err = reader.initSession(); err != nil {
 		return nil, err
 	}
-	if err := reader.startLoops(); err != nil {
+	if err = reader.startLoops(); err != nil {
 		return nil, err
 	}
 
@@ -215,16 +222,23 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
 		mess.Graceful,
 	)
 
-	if _, err = r.sessionController.Remove(session.partitionSessionID); err != nil {
-		return err
-	}
-
 	if mess.Graceful {
 		resp := &rawtopicreader.StopPartitionSessionResponse{
 			PartitionSessionID: session.partitionSessionID,
 		}
 		if err = r.send(resp); err != nil {
 			return err
+		}
+	}
+
+	if _, err = r.sessionController.Remove(session.partitionSessionID); err != nil {
+		if mess.Graceful {
+			return err
+		} else { //nolint:revive,staticcheck
+			// double message with graceful=false is ok.
+			// It may be received after message with graceful=true and session was removed while process that.
+
+			// pass
 		}
 	}
 
