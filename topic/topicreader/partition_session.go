@@ -19,7 +19,7 @@ type PartitionSession struct {
 	ctxCancel          xcontext.CancelErrFunc
 	partitionSessionID rawtopicreader.PartitionSessionID
 
-	committedOffset int64
+	committedOffsetVal int64
 }
 
 func newPartitionSession(partitionContext context.Context, topic string, partitionID int64, partitionSessionID rawtopicreader.PartitionSessionID, committedOffset rawtopicreader.Offset) *PartitionSession {
@@ -31,7 +31,7 @@ func newPartitionSession(partitionContext context.Context, topic string, partiti
 		ctx:                partitionContext,
 		ctxCancel:          cancel,
 		partitionSessionID: partitionSessionID,
-		committedOffset:    committedOffset.ToInt64(),
+		committedOffsetVal: committedOffset.ToInt64(),
 	}
 }
 
@@ -43,8 +43,16 @@ func (s *PartitionSession) close(err error) {
 	s.ctxCancel(err)
 }
 
+func (s *PartitionSession) committedOffset() rawtopicreader.Offset {
+	v := atomic.LoadInt64(&s.committedOffsetVal)
+
+	var res rawtopicreader.Offset
+	res.FromInt64(v)
+	return res
+}
+
 func (s *PartitionSession) setCommittedOffset(v rawtopicreader.Offset) {
-	atomic.StoreInt64(&s.committedOffset, v.ToInt64())
+	atomic.StoreInt64(&s.committedOffsetVal, v.ToInt64())
 }
 
 type partitionSessionStorage struct {

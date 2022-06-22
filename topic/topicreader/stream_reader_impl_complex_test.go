@@ -164,7 +164,8 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 
 	stream := NewMockRawStreamReader(mc)
 
-	reader := newTopicStreamReaderStopped(stream, newTopicStreamReaderConfig())
+	reader, err := newTopicStreamReaderStopped(stream, newTopicStreamReaderConfig())
+	require.NoError(t, err)
 	// reader.initSession() - skip stream level initialization
 
 	const testPartitionID = 5

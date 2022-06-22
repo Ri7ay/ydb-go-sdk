@@ -36,25 +36,30 @@ func (b *CommitBatch) AppendMessages(messages ...Message) {
 	}
 }
 
+func (b *CommitBatch) compress() CommitBatch {
+	return compressCommits(*b)
+}
+
 func (b CommitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffset {
 	if len(b) == 0 {
 		return nil
 	}
 
-	commits := make([]CommitOffset, len(b))
-	copy(commits, b)
-
-	commits = compressCommitsInplace(commits)
-	return commitsToPartitions(commits)
+	commits := compressCommits(b)
+	return commitsToRawPartitionCommitOffset(commits)
 }
 
-func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
-	if len(commits) == 0 {
-		return commits
+func compressCommits(commitsOrig []CommitOffset) []CommitOffset {
+	if len(commitsOrig) == 0 {
+		return nil
 	}
 
-	sort.Slice(commits, func(i, j int) bool {
-		cI, cJ := &commits[i], &commits[j]
+	// prevent broke argument
+	sortedCommits := make([]CommitOffset, len(commitsOrig))
+	copy(sortedCommits, commitsOrig)
+
+	sort.Slice(sortedCommits, func(i, j int) bool {
+		cI, cJ := &sortedCommits[i], &sortedCommits[j]
 		switch {
 		case cI.partitionSession.partitionSessionID < cJ.partitionSession.partitionSessionID:
 			return true
@@ -67,11 +72,12 @@ func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
 		}
 	})
 
-	newCommits := commits[:1]
+	newCommits := sortedCommits[:1]
 	lastCommit := &newCommits[0]
-	for i := range commits[1:] {
-		commit := &commits[i]
-		if lastCommit.partitionSession.partitionSessionID == commit.partitionSession.partitionSessionID && lastCommit.ToOffset == commit.Offset {
+	for i := 1; i < len(sortedCommits); i++ {
+		commit := &sortedCommits[i]
+		if lastCommit.partitionSession.partitionSessionID == commit.partitionSession.partitionSessionID &&
+			lastCommit.ToOffset == commit.Offset {
 			lastCommit.ToOffset = commit.ToOffset
 		} else {
 			newCommits = append(newCommits, *commit)
@@ -81,7 +87,7 @@ func compressCommitsInplace(commits []CommitOffset) []CommitOffset {
 	return newCommits
 }
 
-func commitsToPartitions(commits []CommitOffset) []rawtopicreader.PartitionCommitOffset {
+func commitsToRawPartitionCommitOffset(commits []CommitOffset) []rawtopicreader.PartitionCommitOffset {
 	if len(commits) == 0 {
 		return nil
 	}

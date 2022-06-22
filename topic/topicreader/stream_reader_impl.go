@@ -33,7 +33,8 @@ type topicStreamReaderImpl struct {
 
 	rawMessagesFromBuffer chan rawtopicreader.ServerMessage
 
-	batcher *batcher
+	batcher   *batcher
+	committer committer
 
 	stream RawStreamReader
 
@@ -88,7 +89,10 @@ func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (
 		}
 	}()
 
-	reader := newTopicStreamReaderStopped(stream, cfg)
+	reader, err := newTopicStreamReaderStopped(stream, cfg)
+	if err != nil {
+		return nil, err
+	}
 	if err = reader.initSession(); err != nil {
 		return nil, err
 	}
@@ -102,7 +106,7 @@ func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (
 	return reader, nil
 }
 
-func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderConfig) *topicStreamReaderImpl {
+func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
 	stopPump, cancel := xcontext.WithErrCancel(pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader")))
 
 	res := &topicStreamReaderImpl{
@@ -115,8 +119,22 @@ func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderCo
 		backgroundWorkers:     *backgroundworkers.New(stopPump),
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
+
+	var committerVariant committer
+	switch cfg.CommitMode {
+	case CommitModeNone:
+		committerVariant = committerDisabled{}
+	case CommitModeAsync:
+		committerVariant = newCommitterAsync(res.send)
+	case CommitModeSync:
+		committerVariant = newCommitterSync(res.send)
+	default:
+		return nil, xerrors.WithStackTrace(fmt.Errorf("unexpected commit variant: %v", cfg.CommitMode))
+	}
+	res.committer = committerVariant
+
 	res.sessionController.init()
-	return res
+	return res, nil
 }
 
 func (r *topicStreamReaderImpl) ReadMessageBatch(
@@ -248,9 +266,16 @@ func (r *topicStreamReaderImpl) onPartitionSessionStatusResponseFromBuffer(ctx c
 	panic("not implemented")
 }
 
-func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) error {
+func (r *topicStreamReaderImpl) Commit(ctx context.Context, offsets CommitBatch) error {
+	if err := r.checkCommitOffsets(offsets); err != nil {
+		return err
+	}
+	return r.committer.Commit(ctx, offsets)
+}
+
+func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets CommitBatch) error {
 	req := &rawtopicreader.CommitOffsetRequest{
-		CommitOffsets: offset.toPartitionsOffsets(),
+		CommitOffsets: offsets.toPartitionsOffsets(),
 	}
 	return r.stream.Send(req)
 }
@@ -258,9 +283,11 @@ func (r *topicStreamReaderImpl) Commit(ctx context.Context, offset CommitBatch) 
 func (r *topicStreamReaderImpl) checkCommitOffsets(commitBatch CommitBatch) error {
 	for i := range commitBatch {
 		session := commitBatch[i].partitionSession
+
 		if session == nil {
 			return xerrors.NewWithStackTrace("ydb: commit with nil partition session")
 		}
+
 		if session.Context().Err() != nil {
 			return xerrors.WithStackTrace(fmt.Errorf("ydb: commit error: %w", ErrPartitionStopped))
 		}
@@ -270,6 +297,7 @@ func (r *topicStreamReaderImpl) checkCommitOffsets(commitBatch CommitBatch) erro
 			return xerrors.NewWithStackTrace("ydb: commit with session from other reader")
 		}
 	}
+
 	return nil
 }
 
