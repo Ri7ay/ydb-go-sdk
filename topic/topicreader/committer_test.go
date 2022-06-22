@@ -125,4 +125,24 @@ func TestCommitSync(t *testing.T) {
 		require.NoError(t, c.Commit(context.Background(), commitRange))
 		require.True(t, notifySended)
 	})
+	t.Run("SuccessCommitPreviousCommitted", func(t *testing.T) {
+		session := &PartitionSession{
+			ctx:                context.Background(),
+			partitionSessionID: 1,
+			committedOffsetVal: 2,
+		}
+
+		commitRange := CommitRange{
+			Offset:           1,
+			EndOffset:        2,
+			partitionSession: session,
+		}
+
+		c := newCommitterSync(func(mess rawtopicreader.ClientMessage) error {
+			t.Fatal("must not call")
+			return nil
+		})
+
+		require.NoError(t, c.Commit(context.Background(), commitRange))
+	})
 }
