@@ -40,7 +40,7 @@ type Message struct {
 	PartitionSession *PartitionSession
 
 	MessageData
-	CommitOffset
+	CommitRange
 
 	WrittenAt time.Time
 }
@@ -55,21 +55,25 @@ func (m *Message) Topic() string {
 
 var (
 	_ CommitableByOffset = Message{}
-	_ CommitableByOffset = CommitOffset{}
+	_ CommitableByOffset = CommitRange{}
 )
 
-type CommitOffset struct { // Кусочек, необходимый для коммита сообщения
-	Offset   rawtopicreader.Offset
-	ToOffset rawtopicreader.Offset
+type CommitRange struct {
+	Offset    rawtopicreader.Offset
+	EndOffset rawtopicreader.Offset
 
 	partitionSession *PartitionSession
 }
 
-func (c CommitOffset) GetCommitOffset() CommitOffset {
+func (c CommitRange) GetCommitOffset() CommitRange {
 	return c
 }
 
-var _ CommitableByOffset = Batch{}
+func (c CommitRange) session() *PartitionSession {
+	return c.partitionSession
+}
+
+var _ CommitableByOffset = &Batch{}
 
 func createReader(codec rawtopic.Codec, rawBytes []byte) io.Reader {
 	switch codec {

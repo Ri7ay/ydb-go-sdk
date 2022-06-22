@@ -137,15 +137,7 @@ func (r *Reader) ReadMessage(ctx context.Context) (Message, error) {
 }
 
 func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
-	return r.CommitBatch(ctx, CommitBatchFromCommitableByOffset(offset))
-}
-
-func (r *Reader) CommitBatch(ctx context.Context, commitBatch CommitBatch) error {
-	return r.reader.Commit(ctx, commitBatch)
-}
-
-func (r *Reader) CommitMessages(ctx context.Context, messages ...Message) error {
-	return r.CommitBatch(ctx, CommitBatchFromMessages(messages...))
+	return r.reader.Commit(ctx, offset.GetCommitOffset())
 }
 
 func (r *Reader) messageReaderLoop(ctx context.Context) {

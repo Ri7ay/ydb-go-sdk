@@ -20,7 +20,7 @@ var (
 
 func TestCommitterDisabled(t *testing.T) {
 	c := committerDisabled{}
-	err := c.Commit(context.Background(), nil)
+	err := c.Commit(context.Background(), CommitRange{})
 	require.ErrorIs(t, err, ErrCommitDisabled)
 }
 
@@ -44,14 +44,16 @@ func TestCommitterAsync(t *testing.T) {
 
 			return nil
 		}
+
 		c := newCommitterAsync(callback)
-		require.NoError(t, c.Commit(context.Background(), []CommitOffset{
-			{
+		require.NoError(t, c.Commit(
+			context.Background(),
+			CommitRange{
 				Offset:           3,
-				ToOffset:         4,
+				EndOffset:        4,
 				partitionSession: session1,
 			},
-		}))
+		))
 	})
 
 	t.Run("Error", func(t *testing.T) {
@@ -59,7 +61,7 @@ func TestCommitterAsync(t *testing.T) {
 		c := newCommitterAsync(func(mess rawtopicreader.ClientMessage) error {
 			return testErr
 		})
-		require.ErrorIs(t, c.Commit(context.Background(), nil), testErr)
+		require.ErrorIs(t, c.Commit(context.Background(), CommitRange{partitionSession: &PartitionSession{}}), testErr)
 	})
 
 	t.Run("CancelledContext", func(t *testing.T) {
@@ -71,21 +73,12 @@ func TestCommitterAsync(t *testing.T) {
 		testErr := errors.New("test error")
 		ctx, cancel := xcontext.WithErrCancel(context.Background())
 		cancel(testErr)
-		err := c.Commit(ctx, nil)
+		err := c.Commit(ctx, CommitRange{})
 		require.ErrorIs(t, err, testErr)
 	})
 }
 
 func TestCommitSync(t *testing.T) {
-	t.Run("Empty", func(t *testing.T) {
-		c := newCommitterSync(func(mess rawtopicreader.ClientMessage) error {
-			t.Fatalf("must not call")
-			return nil
-		})
-
-		err := c.Commit(context.Background(), CommitBatch{})
-		require.NoError(t, err)
-	})
 	t.Run("StartWithCancelledContext", func(t *testing.T) {
 		c := newCommitterSync(func(mess rawtopicreader.ClientMessage) error {
 			t.Fatalf("must not call")
@@ -96,19 +89,19 @@ func TestCommitSync(t *testing.T) {
 		ctx, cancel := xcontext.WithErrCancel(context.Background())
 		cancel(testErr)
 
-		err := c.Commit(ctx, CommitBatch{})
+		err := c.Commit(ctx, CommitRange{})
 		require.ErrorIs(t, err, testErr)
 	})
 	t.Run("SuccessCommitWithNotifyAfterCommit", func(t *testing.T) {
-		t.Skip("tmp")
-		session := &PartitionSession{partitionSessionID: 1}
+		session := &PartitionSession{
+			ctx:                context.Background(),
+			partitionSessionID: 1,
+		}
 
-		commits := CommitBatch{
-			{
-				Offset:           1,
-				ToOffset:         2,
-				partitionSession: session,
-			},
+		commitRange := CommitRange{
+			Offset:           1,
+			EndOffset:        2,
+			partitionSession: session,
 		}
 
 		allowSendCommitNotify := make(chan bool)
@@ -116,17 +109,20 @@ func TestCommitSync(t *testing.T) {
 			close(allowSendCommitNotify)
 			require.Equal(t,
 				&rawtopicreader.CommitOffsetRequest{
-					CommitOffsets: commits.toPartitionsOffsets(),
+					CommitOffsets: CommitBatch{commitRange}.toPartitionsOffsets(),
 				},
 				mess)
 			return nil
 		})
 
+		notifySended := false
 		go func() {
 			<-allowSendCommitNotify
+			notifySended = true
 			c.OnCommitNotify(session, rawtopicreader.Offset(2))
 		}()
 
-		require.NoError(t, c.Commit(context.Background(), commits))
+		require.NoError(t, c.Commit(context.Background(), commitRange))
+		require.True(t, notifySended)
 	})
 }

@@ -11,7 +11,7 @@ import (
 type Batch struct {
 	Messages []Message
 
-	CommitOffset // от всех сообщений батча
+	CommitRange // от всех сообщений батча
 
 	partitionSession *PartitionSession
 }
@@ -25,7 +25,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 		}
 
 		prev := messages[i-1]
-		if prev.ToOffset != mess.Offset {
+		if prev.EndOffset != mess.Offset {
 			return Batch{}, xerrors.NewWithStackTrace("ydb: bad message offset while messages batch create")
 		}
 
@@ -37,16 +37,16 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 		}
 	}
 
-	offset := CommitOffset{}
+	offset := CommitRange{}
 	if len(messages) > 0 {
 		offset.Offset = messages[0].Offset
-		offset.ToOffset = messages[len(messages)-1].ToOffset
+		offset.EndOffset = messages[len(messages)-1].EndOffset
 	}
 
 	return Batch{
 		partitionSession: session,
 		Messages:         messages,
-		CommitOffset:     offset,
+		CommitRange:      offset,
 	}, nil
 }
 
@@ -59,7 +59,7 @@ func NewBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		cMess := &messages[i]
 		cMess.PartitionSession = session
 		cMess.Offset = sMess.Offset
-		cMess.ToOffset = sMess.Offset + 1
+		cMess.EndOffset = sMess.Offset + 1
 
 		messData := &cMess.MessageData
 		messData.SeqNo = sMess.SeqNo
@@ -85,13 +85,13 @@ func (m Batch) append(b Batch) (Batch, error) {
 		return Batch{}, xerrors.WithStackTrace(errors.New("ydb: bad partition session for merge"))
 	}
 
-	if m.ToOffset != b.Offset {
+	if m.EndOffset != b.Offset {
 		return Batch{}, xerrors.WithStackTrace(errors.New("ydb: bad offset interval for merge"))
 	}
 
 	res := m
 	res.Messages = append(res.Messages, b.Messages...)
-	res.ToOffset = b.ToOffset
+	res.EndOffset = b.EndOffset
 	return res, nil
 }
 

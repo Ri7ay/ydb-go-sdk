@@ -133,7 +133,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 func TestTopicReaderReconnectorCommit(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "k", "v")
-	commitBatch := CommitBatch{CommitOffset{Offset: 1, ToOffset: 2}}
+	commitRange := CommitRange{Offset: 1, EndOffset: 2}
 	testErr := errors.New("test")
 	testErr2 := errors.New("test2")
 	t.Run("AllOk", func(t *testing.T) {
@@ -141,39 +141,39 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 		defer mc.Finish()
 
 		stream := NewMockbatchedStreamReader(mc)
-		stream.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, offset CommitBatch) {
+		stream.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, offset CommitRange) {
 			require.Equal(t, "v", ctx.Value("k"))
-			require.Equal(t, commitBatch, offset)
+			require.Equal(t, commitRange, offset)
 		})
 		reconnector := &readerReconnector{streamVal: stream}
 		reconnector.initChannels()
-		require.NoError(t, reconnector.Commit(ctx, commitBatch))
+		require.NoError(t, reconnector.Commit(ctx, commitRange))
 	})
 	t.Run("StreamOkCommitErr", func(t *testing.T) {
 		mc := gomock.NewController(t)
 		stream := NewMockbatchedStreamReader(mc)
-		stream.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, offset CommitBatch) {
+		stream.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, offset CommitRange) {
 			require.Equal(t, "v", ctx.Value("k"))
-			require.Equal(t, commitBatch, offset)
+			require.Equal(t, commitRange, offset)
 		}).Return(testErr)
 		reconnector := &readerReconnector{streamVal: stream}
 		reconnector.initChannels()
-		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
+		require.ErrorIs(t, reconnector.Commit(ctx, commitRange), testErr)
 	})
 	t.Run("StreamErr", func(t *testing.T) {
 		reconnector := &readerReconnector{streamErr: testErr}
 		reconnector.initChannels()
-		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
+		require.ErrorIs(t, reconnector.Commit(ctx, commitRange), testErr)
 	})
 	t.Run("CloseErr", func(t *testing.T) {
 		reconnector := &readerReconnector{closedErr: testErr}
 		reconnector.initChannels()
-		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
+		require.ErrorIs(t, reconnector.Commit(ctx, commitRange), testErr)
 	})
 	t.Run("StreamAndCloseErr", func(t *testing.T) {
 		reconnector := &readerReconnector{closedErr: testErr, streamErr: testErr2}
 		reconnector.initChannels()
-		require.ErrorIs(t, reconnector.Commit(ctx, commitBatch), testErr)
+		require.ErrorIs(t, reconnector.Commit(ctx, commitRange), testErr)
 	})
 }
 

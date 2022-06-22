@@ -3,6 +3,7 @@ package topicreader
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -12,13 +13,13 @@ import (
 var ErrCommitDisabled = xerrors.Wrap(errors.New("ydb: commits disabled"))
 
 type committer interface {
-	Commit(ctx context.Context, offset CommitBatch) error
+	Commit(ctx context.Context, commitRange CommitRange) error
 	OnCommitNotify(session *PartitionSession, offset rawtopicreader.Offset)
 }
 
 type committerDisabled struct{}
 
-func (c committerDisabled) Commit(ctx context.Context, offset CommitBatch) error {
+func (c committerDisabled) Commit(ctx context.Context, commitRange CommitRange) error {
 	return ErrCommitDisabled
 }
 
@@ -36,11 +37,14 @@ func newCommitterAsync(send sendMessageToServerFunc) committerAsync {
 	return committerAsync{send: send}
 }
 
-func (c committerAsync) Commit(ctx context.Context, offsets CommitBatch) error {
+func (c committerAsync) Commit(ctx context.Context, commitRange CommitRange) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return sendCommitMessage(c.send, offsets)
+
+	// TODO: buffer
+	batch := CommitBatch{commitRange.GetCommitOffset()}
+	return sendCommitMessage(c.send, batch)
 }
 
 func (c committerAsync) OnCommitNotify(session *PartitionSession, offset rawtopicreader.Offset) {
@@ -58,98 +62,98 @@ func newCommitterSync(send sendMessageToServerFunc) *committerSync {
 	return &committerSync{send: send}
 }
 
-func (c *committerSync) Commit(ctx context.Context, commitBatch CommitBatch) error {
+func (c *committerSync) Commit(ctx context.Context, commitRange CommitRange) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 
-	if len(commitBatch) == 0 {
+	session := commitRange.partitionSession
+
+	waiter := newCommitWaiter(session, commitRange.EndOffset)
+
+	defer c.m.WithLock(func() {
+		c.removeWaiterByIdNeedLock(waiter.Id)
+	})
+
+	var fastOk bool
+	c.m.WithLock(func() {
+		// need check atomically with add to waiters for prevent race conditions
+		fastOk = waiter.checkCondition(session, session.committedOffset())
+
+		if !fastOk {
+			c.addWaiterNeedLock(waiter)
+		}
+	})
+	if fastOk {
 		return nil
 	}
 
-	waitConditions := make([]commitWaiterCondition, len(commitBatch))
-	for i := range commitBatch {
-		waitConditions[i].Session = commitBatch[i].partitionSession
-		waitConditions[i].NeedOffset = commitBatch[i].ToOffset
-	}
-
-	waiter := newCommitWaiter(waitConditions)
-	c.m.WithLock(func() {
-		for i := range waiter.Conditions {
-			waiter.CommitNotify(waiter.Conditions[i].Session, waiter.Conditions[i].NeedOffset)
-		}
-
-		c.waiters = append(c.waiters, waiter)
-	})
-
-	if err := sendCommitMessage(c.send, commitBatch); err != nil {
+	batch := CommitBatch{commitRange}
+	if err := sendCommitMessage(c.send, batch); err != nil {
 		return nil
 	}
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case err := <-waiter.Committed:
-		return err
+	case <-session.Context().Done():
+		return session.Context().Err()
+	case <-waiter.Committed:
+		return nil
 	}
 }
 
 func (c *committerSync) OnCommitNotify(session *PartitionSession, offset rawtopicreader.Offset) {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (c *committerSync) examineWaitersNeedLock() {
-	newWaiters := c.waiters[:0]
-forWaiters:
-	for i := range c.waiters {
-		waiter := &c.waiters[i]
-
-		if len(waiter.Conditions) == 0 {
-			waiter.Committed <- nil
-			continue forWaiters
-		}
-
-		for condIndex := range waiter.Conditions {
-			if err := waiter.Conditions[condIndex].Session.Context().Err(); err != nil {
-				waiter.Committed <- err
-				continue forWaiters
+	c.m.WithLock(func() {
+		for i := range c.waiters {
+			waiter := c.waiters[i]
+			if waiter.checkCondition(session, offset) {
+				select {
+				case waiter.Committed <- struct{}{}:
+				default:
+				}
 			}
 		}
+	})
+}
 
-		newWaiters = append(newWaiters, *waiter)
+func (c *committerSync) addWaiterNeedLock(waiter commitWaiter) {
+	c.waiters = append(c.waiters, waiter)
+}
+
+func (c *committerSync) removeWaiterByIdNeedLock(id int64) {
+	newWaiters := c.waiters[:0]
+	for i := range c.waiters {
+		if c.waiters[i].Id == id {
+			continue
+		}
+
+		newWaiters = append(newWaiters, c.waiters[i])
 	}
 	c.waiters = newWaiters
 }
 
 type commitWaiter struct {
-	Conditions []commitWaiterCondition
-	Committed  chan error
+	Id        int64
+	Session   *PartitionSession
+	EndOffset rawtopicreader.Offset
+	Committed chan struct{}
 }
 
-func newCommitWaiter(needs []commitWaiterCondition) commitWaiter {
+func (w *commitWaiter) checkCondition(session *PartitionSession, offset rawtopicreader.Offset) (finished bool) {
+	return session == w.Session && offset >= w.EndOffset
+}
+
+var commitWaiterLastID int64
+
+func newCommitWaiter(session *PartitionSession, endOffset rawtopicreader.Offset) commitWaiter {
+	id := atomic.AddInt64(&commitWaiterLastID, 1)
 	return commitWaiter{
-		Conditions: needs,
-		Committed:  make(chan error, 1),
+		Id:        id,
+		Session:   session,
+		EndOffset: endOffset,
+		Committed: make(chan struct{}, 1),
 	}
-}
-
-func (w *commitWaiter) CommitNotify(session *PartitionSession, offset rawtopicreader.Offset) {
-	newConditions := w.Conditions[:0]
-	for srcIndex := range w.Conditions {
-		need := &w.Conditions[srcIndex]
-		if need.Session == session && offset >= need.NeedOffset {
-			// needs completed by notification
-			continue
-		}
-		newConditions = append(newConditions, *need)
-	}
-	w.Conditions = newConditions
-}
-
-type commitWaiterCondition struct {
-	Session    *PartitionSession
-	NeedOffset rawtopicreader.Offset
 }
 
 func sendCommitMessage(send sendMessageToServerFunc, batch CommitBatch) error {

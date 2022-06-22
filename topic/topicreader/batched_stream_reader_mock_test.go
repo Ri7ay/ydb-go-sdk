@@ -46,17 +46,17 @@ func (mr *MockbatchedStreamReaderMockRecorder) Close(ctx, err interface{}) *gomo
 }
 
 // Commit mocks base method.
-func (m *MockbatchedStreamReader) Commit(ctx context.Context, offset CommitBatch) error {
+func (m *MockbatchedStreamReader) Commit(ctx context.Context, commitRange CommitRange) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit", ctx, offset)
+	ret := m.ctrl.Call(m, "Commit", ctx, commitRange)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockbatchedStreamReaderMockRecorder) Commit(ctx, offset interface{}) *gomock.Call {
+func (mr *MockbatchedStreamReaderMockRecorder) Commit(ctx, commitRange interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockbatchedStreamReader)(nil).Commit), ctx, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockbatchedStreamReader)(nil).Commit), ctx, commitRange)
 }
 
 // ReadMessageBatch mocks base method.

@@ -27,7 +27,7 @@ func TestReader_Close(t *testing.T) {
 		<-readerContext.Done()
 		return
 	}).Return(Batch{}, testErr)
-	baseReader.EXPECT().Commit(gomock.Any(), gomock.Any()).Times(3).Do(func(_, _ interface{}) {
+	baseReader.EXPECT().Commit(gomock.Any(), gomock.Any()).Do(func(_, _ interface{}) {
 		<-readerContext.Done()
 		return
 	}).Return(testErr)
@@ -65,24 +65,12 @@ func TestReader_Close(t *testing.T) {
 	}
 
 	readerCommitState := newCallState()
-	readerCommitBatchState := newCallState()
 	readerReadMessageState := newCallState()
 	readerReadMessageBatchState := newCallState()
-	readerCommitMessagesState := newCallState()
 
 	go func() {
 		readerCommitState.err = reader.Commit(context.Background(), Message{})
 		close(readerCommitState.callCompleted)
-	}()
-
-	go func() {
-		readerCommitBatchState.err = reader.CommitBatch(context.Background(), nil)
-		close(readerCommitBatchState.callCompleted)
-	}()
-
-	go func() {
-		readerCommitMessagesState.err = reader.CommitMessages(context.Background())
-		close(readerCommitMessagesState.callCompleted)
 	}()
 
 	go func() {
@@ -117,90 +105,21 @@ func TestReader_Commit(t *testing.T) {
 	baseReader := NewMockbatchedStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
-	expectedBatchOk := CommitBatch{{
-		Offset:   1,
-		ToOffset: 10,
-	}}
-	expectedBatchOk[0].partitionSession = &PartitionSession{partitionSessionID: 10}
-	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
-	require.NoError(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchOk[0]}))
-
-	expectedBatchErr := CommitBatch{{
-		Offset:   15,
-		ToOffset: 20,
-	}}
-
-	expectedBatchErr[0].partitionSession = &PartitionSession{partitionSessionID: 30}
-	testErr := errors.New("test err")
-	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
-	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitOffset: expectedBatchErr[0]}), testErr)
-}
-
-func TestReader_CommitBatch(t *testing.T) {
-	mc := gomock.NewController(t)
-	defer mc.Finish()
-
-	baseReader := NewMockbatchedStreamReader(mc)
-	reader := &Reader{reader: baseReader}
-
-	expectedBatchOk := CommitBatch{{
-		Offset:   1,
-		ToOffset: 10,
-	}}
-	expectedBatchOk[0].partitionSession = &PartitionSession{partitionSessionID: 10}
-	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
-	require.NoError(t, reader.CommitBatch(context.Background(), expectedBatchOk))
-
-	expectedBatchErr := CommitBatch{{
-		Offset:   15,
-		ToOffset: 20,
-	}}
-	expectedBatchErr[0].partitionSession = &PartitionSession{partitionSessionID: 30}
-	testErr := errors.New("test err")
-	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
-	require.ErrorIs(t, reader.CommitBatch(context.Background(), expectedBatchErr), testErr)
-}
-
-func TestReader_CommitMessages(t *testing.T) {
-	mc := gomock.NewController(t)
-	defer mc.Finish()
-
-	baseReader := NewMockbatchedStreamReader(mc)
-	reader := &Reader{reader: baseReader}
-
-	expectedBatchOk := CommitBatch{
-		{
-			Offset:   1,
-			ToOffset: 2,
-		},
-		{
-			Offset:   2,
-			ToOffset: 3,
-		},
+	expectedRangeOk := CommitRange{
+		Offset:           1,
+		EndOffset:        10,
+		partitionSession: &PartitionSession{partitionSessionID: 10},
 	}
-	expectedBatchOk[0].partitionSession = &PartitionSession{partitionSessionID: 10}
-	expectedBatchOk[1].partitionSession = expectedBatchOk[0].partitionSession
-	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchOk).Return(nil)
-	require.NoError(t, reader.CommitMessages(context.Background(),
-		Message{CommitOffset: expectedBatchOk[0]}, Message{CommitOffset: expectedBatchOk[1]},
-	))
+	baseReader.EXPECT().Commit(gomock.Any(), expectedRangeOk).Return(nil)
+	require.NoError(t, reader.Commit(context.Background(), Message{CommitRange: expectedRangeOk}))
 
-	expectedBatchErr := CommitBatch{
-		{
-			Offset:   3,
-			ToOffset: 4,
-		},
-		{
-			Offset:   4,
-			ToOffset: 5,
-		},
+	expectedRangeErr := CommitRange{
+		Offset:           15,
+		EndOffset:        20,
+		partitionSession: &PartitionSession{partitionSessionID: 30},
 	}
-	expectedBatchErr[0].partitionSession = &PartitionSession{partitionSessionID: 30}
-	expectedBatchErr[1].partitionSession = expectedBatchErr[0].partitionSession
+
 	testErr := errors.New("test err")
-	baseReader.EXPECT().Commit(gomock.Any(), expectedBatchErr).Return(testErr)
-	require.ErrorIs(t, reader.CommitMessages(context.Background(),
-		Message{CommitOffset: expectedBatchErr[0]},
-		Message{CommitOffset: expectedBatchErr[1]},
-	), testErr)
+	baseReader.EXPECT().Commit(gomock.Any(), expectedRangeErr).Return(testErr)
+	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitRange: expectedRangeErr}), testErr)
 }

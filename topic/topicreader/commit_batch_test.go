@@ -13,8 +13,8 @@ func TestCompressCommitsInplace(t *testing.T) {
 	session2 := &PartitionSession{partitionSessionID: 2}
 	table := []struct {
 		name     string
-		source   []CommitOffset
-		expected []CommitOffset
+		source   []CommitRange
+		expected []CommitRange
 	}{
 		{
 			name:     "Empty",
@@ -23,135 +23,135 @@ func TestCompressCommitsInplace(t *testing.T) {
 		},
 		{
 			name: "OneCommit",
-			source: []CommitOffset{
+			source: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         2,
+					EndOffset:        2,
 					partitionSession: session1,
 				},
 			},
-			expected: []CommitOffset{
+			expected: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         2,
+					EndOffset:        2,
 					partitionSession: session1,
 				},
 			},
 		},
 		{
 			name: "CompressedToOne",
-			source: []CommitOffset{
+			source: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         2,
+					EndOffset:        2,
 					partitionSession: session1,
 				},
 				{
 					Offset:           2,
-					ToOffset:         5,
+					EndOffset:        5,
 					partitionSession: session1,
 				},
 				{
 					Offset:           5,
-					ToOffset:         10,
+					EndOffset:        10,
 					partitionSession: session1,
 				},
 			},
-			expected: []CommitOffset{
+			expected: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         10,
+					EndOffset:        10,
 					partitionSession: session1,
 				},
 			},
 		},
 		{
 			name: "CompressedUnordered",
-			source: []CommitOffset{
+			source: []CommitRange{
 				{
 					Offset:           5,
-					ToOffset:         10,
+					EndOffset:        10,
 					partitionSession: session1,
 				},
 				{
 					Offset:           2,
-					ToOffset:         5,
+					EndOffset:        5,
 					partitionSession: session1,
 				},
 				{
 					Offset:           1,
-					ToOffset:         2,
+					EndOffset:        2,
 					partitionSession: session1,
 				},
 			},
-			expected: []CommitOffset{
+			expected: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         10,
+					EndOffset:        10,
 					partitionSession: session1,
 				},
 			},
 		},
 		{
 			name: "CompressDifferentSessionsSeparated",
-			source: []CommitOffset{
+			source: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         2,
+					EndOffset:        2,
 					partitionSession: session1,
 				},
 				{
 					Offset:           2,
-					ToOffset:         3,
+					EndOffset:        3,
 					partitionSession: session2,
 				},
 			},
-			expected: []CommitOffset{
+			expected: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         2,
+					EndOffset:        2,
 					partitionSession: session1,
 				},
 				{
 					Offset:           2,
-					ToOffset:         3,
+					EndOffset:        3,
 					partitionSession: session2,
 				},
 			},
 		},
 		{
 			name: "CompressTwoSessions",
-			source: []CommitOffset{
+			source: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         1,
+					EndOffset:        1,
 					partitionSession: session1,
 				},
 				{
 					Offset:           2,
-					ToOffset:         3,
+					EndOffset:        3,
 					partitionSession: session2,
 				},
 				{
 					Offset:           1,
-					ToOffset:         3,
+					EndOffset:        3,
 					partitionSession: session1,
 				},
 				{
 					Offset:           3,
-					ToOffset:         5,
+					EndOffset:        5,
 					partitionSession: session2,
 				},
 			},
-			expected: []CommitOffset{
+			expected: []CommitRange{
 				{
 					Offset:           1,
-					ToOffset:         3,
+					EndOffset:        3,
 					partitionSession: session1,
 				},
 				{
 					Offset:           2,
-					ToOffset:         5,
+					EndOffset:        5,
 					partitionSession: session2,
 				},
 			},
@@ -159,9 +159,9 @@ func TestCompressCommitsInplace(t *testing.T) {
 	}
 	for _, test := range table {
 		t.Run(test.name, func(t *testing.T) {
-			var src []CommitOffset
+			var src []CommitRange
 			if test.source != nil {
-				src = make([]CommitOffset, len(test.source))
+				src = make([]CommitRange, len(test.source))
 				copy(src, test.source)
 			}
 
@@ -178,7 +178,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 
 	table := []struct {
 		name     string
-		source   []CommitOffset
+		source   []CommitRange
 		expected []rawtopicreader.PartitionCommitOffset
 	}{
 		{
@@ -188,8 +188,8 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "OneCommit",
-			source: []CommitOffset{
-				{Offset: 1, ToOffset: 2, partitionSession: session1},
+			source: []CommitRange{
+				{Offset: 1, EndOffset: 2, partitionSession: session1},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{
@@ -202,10 +202,10 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "NeighboursWithOneSession",
-			source: []CommitOffset{
-				{Offset: 1, ToOffset: 2, partitionSession: session1},
-				{Offset: 10, ToOffset: 20, partitionSession: session1},
-				{Offset: 30, ToOffset: 40, partitionSession: session1},
+			source: []CommitRange{
+				{Offset: 1, EndOffset: 2, partitionSession: session1},
+				{Offset: 10, EndOffset: 20, partitionSession: session1},
+				{Offset: 30, EndOffset: 40, partitionSession: session1},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{
@@ -220,11 +220,11 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "TwoSessionsSameOffsets",
-			source: []CommitOffset{
-				{Offset: 1, ToOffset: 2, partitionSession: session1},
-				{Offset: 10, ToOffset: 20, partitionSession: session1},
-				{Offset: 1, ToOffset: 2, partitionSession: session2},
-				{Offset: 10, ToOffset: 20, partitionSession: session2},
+			source: []CommitRange{
+				{Offset: 1, EndOffset: 2, partitionSession: session1},
+				{Offset: 10, EndOffset: 20, partitionSession: session1},
+				{Offset: 1, EndOffset: 2, partitionSession: session2},
+				{Offset: 10, EndOffset: 20, partitionSession: session2},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{
@@ -245,12 +245,12 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "TwoSessionsWithDifferenceOffsets",
-			source: []CommitOffset{
-				{Offset: 1, ToOffset: 2, partitionSession: session1},
-				{Offset: 10, ToOffset: 20, partitionSession: session1},
-				{Offset: 1, ToOffset: 2, partitionSession: session2},
-				{Offset: 3, ToOffset: 4, partitionSession: session2},
-				{Offset: 5, ToOffset: 6, partitionSession: session2},
+			source: []CommitRange{
+				{Offset: 1, EndOffset: 2, partitionSession: session1},
+				{Offset: 10, EndOffset: 20, partitionSession: session1},
+				{Offset: 1, EndOffset: 2, partitionSession: session2},
+				{Offset: 3, EndOffset: 4, partitionSession: session2},
+				{Offset: 5, EndOffset: 6, partitionSession: session2},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{

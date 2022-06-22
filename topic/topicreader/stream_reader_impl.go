@@ -266,11 +266,11 @@ func (r *topicStreamReaderImpl) onPartitionSessionStatusResponseFromBuffer(ctx c
 	panic("not implemented")
 }
 
-func (r *topicStreamReaderImpl) Commit(ctx context.Context, offsets CommitBatch) error {
-	if err := r.checkCommitOffsets(offsets); err != nil {
+func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange CommitRange) error {
+	if err := r.checkCommitRange(commitRange); err != nil {
 		return err
 	}
-	return r.committer.Commit(ctx, offsets)
+	return r.committer.Commit(ctx, commitRange)
 }
 
 func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets CommitBatch) error {
@@ -280,22 +280,20 @@ func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets CommitB
 	return r.stream.Send(req)
 }
 
-func (r *topicStreamReaderImpl) checkCommitOffsets(commitBatch CommitBatch) error {
-	for i := range commitBatch {
-		session := commitBatch[i].partitionSession
+func (r *topicStreamReaderImpl) checkCommitRange(commitRange CommitRange) error {
+	session := commitRange.partitionSession
 
-		if session == nil {
-			return xerrors.NewWithStackTrace("ydb: commit with nil partition session")
-		}
+	if session == nil {
+		return xerrors.NewWithStackTrace("ydb: commit with nil partition session")
+	}
 
-		if session.Context().Err() != nil {
-			return xerrors.WithStackTrace(fmt.Errorf("ydb: commit error: %w", ErrPartitionStopped))
-		}
+	if session.Context().Err() != nil {
+		return xerrors.WithStackTrace(fmt.Errorf("ydb: commit error: %w", ErrPartitionStopped))
+	}
 
-		ownSession, err := r.sessionController.Get(session.partitionSessionID)
-		if err != nil || session != ownSession {
-			return xerrors.NewWithStackTrace("ydb: commit with session from other reader")
-		}
+	ownSession, err := r.sessionController.Get(session.partitionSessionID)
+	if err != nil || session != ownSession {
+		return xerrors.NewWithStackTrace("ydb: commit with session from other reader")
 	}
 
 	return nil

@@ -78,13 +78,13 @@ func (r *readerReconnector) ReadMessageBatch(ctx context.Context, opts readMessa
 	}
 }
 
-func (r *readerReconnector) Commit(ctx context.Context, offset CommitBatch) error {
+func (r *readerReconnector) Commit(ctx context.Context, commitRange CommitRange) error {
 	stream, err := r.stream(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = stream.Commit(ctx, offset)
+	err = stream.Commit(ctx, commitRange)
 	r.fireReconnectOnRetryableError(stream, err)
 	return err
 }

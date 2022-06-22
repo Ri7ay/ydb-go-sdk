@@ -7,10 +7,10 @@ import (
 )
 
 type CommitableByOffset interface { // Интерфейс, который можно коммитить по оффсету
-	GetCommitOffset() CommitOffset
+	GetCommitOffset() CommitRange
 }
 
-type CommitBatch []CommitOffset
+type CommitBatch []CommitRange
 
 func CommitBatchFromMessages(messages ...Message) CommitBatch {
 	var res CommitBatch
@@ -49,13 +49,13 @@ func (b CommitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffse
 	return commitsToRawPartitionCommitOffset(commits)
 }
 
-func compressCommits(commitsOrig []CommitOffset) []CommitOffset {
+func compressCommits(commitsOrig []CommitRange) []CommitRange {
 	if len(commitsOrig) == 0 {
 		return nil
 	}
 
 	// prevent broke argument
-	sortedCommits := make([]CommitOffset, len(commitsOrig))
+	sortedCommits := make([]CommitRange, len(commitsOrig))
 	copy(sortedCommits, commitsOrig)
 
 	sort.Slice(sortedCommits, func(i, j int) bool {
@@ -77,8 +77,8 @@ func compressCommits(commitsOrig []CommitOffset) []CommitOffset {
 	for i := 1; i < len(sortedCommits); i++ {
 		commit := &sortedCommits[i]
 		if lastCommit.partitionSession.partitionSessionID == commit.partitionSession.partitionSessionID &&
-			lastCommit.ToOffset == commit.Offset {
-			lastCommit.ToOffset = commit.ToOffset
+			lastCommit.EndOffset == commit.Offset {
+			lastCommit.EndOffset = commit.EndOffset
 		} else {
 			newCommits = append(newCommits, *commit)
 			lastCommit = &newCommits[len(newCommits)-1]
@@ -87,7 +87,7 @@ func compressCommits(commitsOrig []CommitOffset) []CommitOffset {
 	return newCommits
 }
 
-func commitsToRawPartitionCommitOffset(commits []CommitOffset) []rawtopicreader.PartitionCommitOffset {
+func commitsToRawPartitionCommitOffset(commits []CommitRange) []rawtopicreader.PartitionCommitOffset {
 	if len(commits) == 0 {
 		return nil
 	}
@@ -106,7 +106,7 @@ func commitsToRawPartitionCommitOffset(commits []CommitOffset) []rawtopicreader.
 		commit := &commits[i]
 		offsetsRange := rawtopicreader.OffsetRange{
 			Start: commit.Offset,
-			End:   commit.ToOffset,
+			End:   commit.EndOffset,
 		}
 		if partition.PartitionSessionID != commit.partitionSession.partitionSessionID {
 			partitionOffsets = append(partitionOffsets, newPartition(commit.partitionSession.partitionSessionID))
