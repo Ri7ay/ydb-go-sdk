@@ -34,16 +34,19 @@ type topicStreamReaderImpl struct {
 	rawMessagesFromBuffer chan rawtopicreader.ServerMessage
 
 	batcher   *batcher
-	committer committer
+	committer *committer
 
 	stream RawStreamReader
 
 	m       xsync.RWMutex
 	err     error
 	started bool
+	closed  bool
 }
 
 type topicStreamReaderConfig struct {
+	SendBatchTimeLagTrigger         time.Duration
+	SendBatchCounterTrigger         int
 	BaseContext                     context.Context
 	BufferSizeProtoBytes            int
 	Cred                            credentials.Credentials
@@ -75,10 +78,11 @@ func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
 
 func newTopicStreamReaderConfig() topicStreamReaderConfig {
 	return topicStreamReaderConfig{
-		BaseContext:          context.Background(),
-		BufferSizeProtoBytes: 1024 * 1024,
-		CredUpdateInterval:   time.Hour,
-		CommitMode:           CommitModeAsync,
+		BaseContext:             context.Background(),
+		BufferSizeProtoBytes:    1024 * 1024,
+		CredUpdateInterval:      time.Hour,
+		CommitMode:              CommitModeAsync,
+		SendBatchTimeLagTrigger: time.Second,
 	}
 }
 
@@ -107,7 +111,8 @@ func newTopicStreamReader(stream RawStreamReader, cfg topicStreamReaderConfig) (
 }
 
 func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderConfig) (*topicStreamReaderImpl, error) {
-	stopPump, cancel := xcontext.WithErrCancel(pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader")))
+	labeledContext := pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader"))
+	stopPump, cancel := xcontext.WithErrCancel(labeledContext)
 
 	res := &topicStreamReaderImpl{
 		cfg:                   cfg,
@@ -120,18 +125,9 @@ func newTopicStreamReaderStopped(stream RawStreamReader, cfg topicStreamReaderCo
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 
-	var committerVariant committer
-	switch cfg.CommitMode {
-	case CommitModeNone:
-		committerVariant = committerDisabled{}
-	case CommitModeAsync:
-		committerVariant = newCommitterAsync(res.send)
-	case CommitModeSync:
-		committerVariant = newCommitterSync(res.send)
-	default:
-		return nil, xerrors.WithStackTrace(fmt.Errorf("unexpected commit variant: %v", cfg.CommitMode))
-	}
-	res.committer = committerVariant
+	res.committer = newCommitter(labeledContext, cfg.CommitMode, res.send)
+	res.committer.BufferTimeLagTrigger = cfg.SendBatchTimeLagTrigger
+	res.committer.BufferCountTrigger = cfg.SendBatchCounterTrigger
 
 	res.sessionController.init()
 	return res, nil
@@ -507,18 +503,30 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 }
 
 func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
+	isFirstClose := false
+	// TODO: close error
 	r.m.WithLock(func() {
-		if r.err != nil {
+		if r.closed {
 			return
 		}
+		isFirstClose = true
+		r.closed = true
 
 		r.err = err
 		r.cancel(err)
-
-		_ = r.stream.CloseSend()
 	})
+	if !isFirstClose {
+		// TODO: return error
+		return
+	}
 
-	_ = r.backgroundWorkers.Close(ctx)
+	_ = r.committer.Close(ctx, err)
+
+	// close stream strong after committer close - for flush commits buffer
+	_ = r.stream.CloseSend()
+
+	// close background workers after r.stream.CloseSend
+	_ = r.backgroundWorkers.Close(ctx, err)
 }
 
 func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffsetResponse) error {
@@ -549,14 +557,22 @@ func (r *topicStreamReaderImpl) updateToken(ctx context.Context) error {
 }
 
 func (r *topicStreamReaderImpl) onStartPartitionSessionRequest(m *rawtopicreader.StartPartitionSessionRequest) error {
-	session := newPartitionSession(r.ctx, m.PartitionSession.Path, m.PartitionSession.PartitionID, m.PartitionSession.PartitionSessionID, m.CommittedOffset)
+	session := newPartitionSession(
+		r.ctx,
+		m.PartitionSession.Path,
+		m.PartitionSession.PartitionID,
+		m.PartitionSession.PartitionSessionID,
+		m.CommittedOffset,
+	)
 	if err := r.sessionController.Add(session); err != nil {
 		return err
 	}
 	return r.batcher.PushRawMessage(session, m)
 }
 
-func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(m *rawtopicreader.StartPartitionSessionRequest) error {
+func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
+	m *rawtopicreader.StartPartitionSessionRequest,
+) error {
 	session, err := r.sessionController.Get(m.PartitionSession.PartitionSessionID)
 	if err != nil {
 		return err
@@ -571,9 +587,9 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(m *rawt
 		req := GetPartitionStartOffsetRequest{
 			Session: session,
 		}
-		resp, err := r.cfg.GetPartitionStartOffsetCallback(session.Context(), req)
-		if err != nil {
-			return err
+		resp, callbackErr := r.cfg.GetPartitionStartOffsetCallback(session.Context(), req)
+		if callbackErr != nil {
+			return callbackErr
 		}
 		if resp.startOffsetUsed {
 			wantOffset := resp.startOffset.ToInt64()

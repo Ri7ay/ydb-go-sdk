@@ -3,8 +3,11 @@ package topicreader
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
+	"time"
 
+	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
@@ -12,87 +15,36 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
-var (
-	_ committer = committerDisabled{}
-	_ committer = committerAsync{}
-	_ committer = &committerSync{}
-)
+type emptyChan chan struct{}
 
-func TestCommitterDisabled(t *testing.T) {
-	c := committerDisabled{}
-	err := c.Commit(context.Background(), CommitRange{})
-	require.ErrorIs(t, err, ErrCommitDisabled)
-}
-
-func TestCommitterAsync(t *testing.T) {
-	t.Run("Ok", func(t *testing.T) {
-		session1 := &PartitionSession{partitionSessionID: 2}
-		callback := func(mess rawtopicreader.ClientMessage) error {
-			require.Equal(t, &rawtopicreader.CommitOffsetRequest{
-				CommitOffsets: []rawtopicreader.PartitionCommitOffset{
-					{
-						PartitionSessionID: 2,
-						Offsets: []rawtopicreader.OffsetRange{
-							{
-								Start: 3,
-								End:   4,
-							},
-						},
-					},
-				},
-			}, mess)
-
+func TestCommitterCommit(t *testing.T) {
+	t.Run("CommitWithCancelledContext", func(t *testing.T) {
+		ctx := testContext(t)
+		c := newTestCommitter(ctx, t)
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			t.Fatalf("must not call")
 			return nil
 		}
 
-		c := newCommitterAsync(callback)
-		require.NoError(t, c.Commit(
-			context.Background(),
-			CommitRange{
-				Offset:           3,
-				EndOffset:        4,
-				partitionSession: session1,
-			},
-		))
-	})
-
-	t.Run("Error", func(t *testing.T) {
 		testErr := errors.New("test error")
-		c := newCommitterAsync(func(mess rawtopicreader.ClientMessage) error {
-			return testErr
-		})
-		require.ErrorIs(t, c.Commit(context.Background(), CommitRange{partitionSession: &PartitionSession{}}), testErr)
-	})
-
-	t.Run("CancelledContext", func(t *testing.T) {
-		c := newCommitterAsync(func(mess rawtopicreader.ClientMessage) error {
-			t.Fatalf("must not called")
-			return nil
-		})
-
-		testErr := errors.New("test error")
-		ctx, cancel := xcontext.WithErrCancel(context.Background())
+		ctx, cancel := xcontext.WithErrCancel(ctx)
 		cancel(testErr)
+
 		err := c.Commit(ctx, CommitRange{})
 		require.ErrorIs(t, err, testErr)
 	})
 }
 
-func TestCommitSync(t *testing.T) {
-	t.Run("StartWithCancelledContext", func(t *testing.T) {
-		c := newCommitterSync(func(mess rawtopicreader.ClientMessage) error {
-			t.Fatalf("must not call")
-			return nil
-		})
+func TestCommitterCommitDisabled(t *testing.T) {
+	ctx := testContext(t)
+	c := &committer{mode: CommitModeNone}
+	err := c.Commit(ctx, CommitRange{})
+	require.ErrorIs(t, err, ErrCommitDisabled)
+}
 
-		testErr := errors.New("test error")
-		ctx, cancel := xcontext.WithErrCancel(context.Background())
-		cancel(testErr)
-
-		err := c.Commit(ctx, CommitRange{})
-		require.ErrorIs(t, err, testErr)
-	})
-	t.Run("SuccessCommitWithNotifyAfterCommit", func(t *testing.T) {
+func TestCommitterCommitAsync(t *testing.T) {
+	t.Run("SendCommit", func(t *testing.T) {
+		ctx := testContext(t)
 		session := &PartitionSession{
 			ctx:                context.Background(),
 			partitionSessionID: 1,
@@ -104,30 +56,96 @@ func TestCommitSync(t *testing.T) {
 			partitionSession: session,
 		}
 
-		allowSendCommitNotify := make(chan bool)
-		c := newCommitterSync(func(mess rawtopicreader.ClientMessage) error {
-			close(allowSendCommitNotify)
+		sendCalled := make(chan bool)
+		c := newTestCommitter(ctx, t)
+		c.mode = CommitModeAsync
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			close(sendCalled)
 			require.Equal(t,
 				&rawtopicreader.CommitOffsetRequest{
 					CommitOffsets: CommitBatch{commitRange}.toPartitionsOffsets(),
 				},
 				mess)
 			return nil
-		})
+		}
+		require.NoError(t, c.Commit(ctx, commitRange))
+		<-sendCalled
+	})
+}
+
+func TestCommitterCommitSync(t *testing.T) {
+	t.Run("SendCommit", func(t *testing.T) {
+		ctx := testContext(t)
+		session := &PartitionSession{
+			ctx:                context.Background(),
+			partitionSessionID: 1,
+		}
+
+		commitRange := CommitRange{
+			Offset:           1,
+			EndOffset:        2,
+			partitionSession: session,
+		}
+
+		sendCalled := false
+		c := newTestCommitter(ctx, t)
+		c.mode = CommitModeSync
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			sendCalled = true
+			require.Equal(t,
+				&rawtopicreader.CommitOffsetRequest{
+					CommitOffsets: CommitBatch{commitRange}.toPartitionsOffsets(),
+				},
+				mess)
+			c.OnCommitNotify(session, commitRange.EndOffset)
+			return nil
+		}
+		require.NoError(t, c.Commit(ctx, commitRange))
+		require.True(t, sendCalled)
+	})
+
+	t.Run("SuccessCommitWithNotifyAfterCommit", func(t *testing.T) {
+		ctx := testContext(t)
+		session := &PartitionSession{
+			ctx:                context.Background(),
+			partitionSessionID: 1,
+		}
+
+		commitRange := CommitRange{
+			Offset:           1,
+			EndOffset:        2,
+			partitionSession: session,
+		}
+
+		commitSended := make(emptyChan)
+		c := newTestCommitter(ctx, t)
+		c.mode = CommitModeSync
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			close(commitSended)
+			return nil
+		}
+
+		commitCompleted := make(emptyChan)
+		go func() {
+			require.NoError(t, c.Commit(ctx, commitRange))
+			close(commitCompleted)
+		}()
 
 		notifySended := false
 		go func() {
-			<-allowSendCommitNotify
+			<-commitSended
 			notifySended = true
 			c.OnCommitNotify(session, rawtopicreader.Offset(2))
 		}()
 
-		require.NoError(t, c.Commit(context.Background(), commitRange))
+		<-commitCompleted
 		require.True(t, notifySended)
 	})
+
 	t.Run("SuccessCommitPreviousCommitted", func(t *testing.T) {
+		ctx := testContext(t)
 		session := &PartitionSession{
-			ctx:                context.Background(),
+			ctx:                ctx,
 			partitionSessionID: 1,
 			committedOffsetVal: 2,
 		}
@@ -138,11 +156,173 @@ func TestCommitSync(t *testing.T) {
 			partitionSession: session,
 		}
 
-		c := newCommitterSync(func(mess rawtopicreader.ClientMessage) error {
-			t.Fatal("must not call")
-			return nil
-		})
-
-		require.NoError(t, c.Commit(context.Background(), commitRange))
+		c := newTestCommitter(ctx, t)
+		require.NoError(t, c.Commit(ctx, commitRange))
 	})
+}
+
+func TestCommitterBuffer(t *testing.T) {
+	t.Run("SendZeroLag", func(t *testing.T) {
+		ctx := testContext(t)
+		c := newTestCommitter(ctx, t)
+
+		sendCalled := make(emptyChan)
+		clock := clockwork.NewFakeClock()
+		c.clock = clock
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			close(sendCalled)
+			return nil
+		}
+
+		require.NoError(t, c.pushCommit(CommitRange{partitionSession: &PartitionSession{partitionSessionID: 2}}))
+		<-sendCalled
+	})
+	t.Run("TimeLagTrigger", func(t *testing.T) {
+		ctx := testContext(t)
+		c := newTestCommitter(ctx, t)
+
+		sendCalled := make(emptyChan)
+		isSended := func() bool {
+			select {
+			case <-sendCalled:
+				return true
+			default:
+				return false
+			}
+		}
+
+		clock := clockwork.NewFakeClock()
+		c.clock = clock
+		c.BufferTimeLagTrigger = time.Second
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			commitMess := mess.(*rawtopicreader.CommitOffsetRequest)
+			require.Len(t, commitMess.CommitOffsets, 2)
+			close(sendCalled)
+			return nil
+		}
+
+		require.NoError(t, c.pushCommit(CommitRange{partitionSession: &PartitionSession{partitionSessionID: 1}}))
+		require.NoError(t, c.pushCommit(CommitRange{partitionSession: &PartitionSession{partitionSessionID: 2}}))
+		require.False(t, isSended())
+
+		clock.BlockUntil(1)
+
+		clock.Advance(time.Second - 1)
+		time.Sleep(time.Millisecond)
+		require.False(t, isSended())
+
+		clock.Advance(1)
+		<-sendCalled
+	})
+	t.Run("CountAndTimeFireCountMoreThenNeed", func(t *testing.T) {
+		ctx := testContext(t)
+		c := newTestCommitter(ctx, t)
+
+		sendCalled := make(emptyChan)
+
+		clock := clockwork.NewFakeClock()
+		c.clock = clock
+		c.BufferTimeLagTrigger = time.Second // for prevent send
+		c.BufferCountTrigger = 2
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			commitMess := mess.(*rawtopicreader.CommitOffsetRequest)
+			require.Len(t, commitMess.CommitOffsets, 4)
+			close(sendCalled)
+			return nil
+		}
+		c.commits = []CommitRange{
+			{partitionSession: &PartitionSession{partitionSessionID: 1}},
+			{partitionSession: &PartitionSession{partitionSessionID: 2}},
+			{partitionSession: &PartitionSession{partitionSessionID: 3}},
+		}
+
+		require.NoError(t, c.pushCommit(CommitRange{partitionSession: &PartitionSession{partitionSessionID: 4}}))
+		<-sendCalled
+	})
+	t.Run("CountAndTimeFireCountOnAdd", func(t *testing.T) {
+		ctx := testContext(t)
+		c := newTestCommitter(ctx, t)
+
+		sendCalled := make(emptyChan)
+		isSended := func() bool {
+			select {
+			case <-sendCalled:
+				return true
+			default:
+				return false
+			}
+		}
+
+		clock := clockwork.NewFakeClock()
+		c.clock = clock
+		c.BufferTimeLagTrigger = time.Second // for prevent send
+		c.BufferCountTrigger = 4
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			commitMess := mess.(*rawtopicreader.CommitOffsetRequest)
+			require.Len(t, commitMess.CommitOffsets, 4)
+			close(sendCalled)
+			return nil
+		}
+
+		for i := 0; i < 3; i++ {
+			require.NoError(t, c.pushCommit(
+				CommitRange{
+					partitionSession: &PartitionSession{
+						partitionSessionID: rawtopicreader.PartitionSessionID(i),
+					},
+				},
+			))
+
+			// wait notify consumed
+			for len(c.commitLoopSignal) > 0 {
+				runtime.Gosched()
+			}
+			require.False(t, isSended())
+		}
+
+		require.NoError(t, c.pushCommit(CommitRange{partitionSession: &PartitionSession{partitionSessionID: 3}}))
+		<-sendCalled
+	})
+	t.Run("CountAndTimeFireTime", func(t *testing.T) {
+		ctx := testContext(t)
+		clock := clockwork.NewFakeClock()
+		c := newTestCommitter(ctx, t)
+		c.clock = clock
+		c.BufferCountTrigger = 2
+		c.BufferTimeLagTrigger = time.Second
+
+		sendCalled := make(emptyChan)
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			close(sendCalled)
+			return nil
+		}
+		require.NoError(t, c.pushCommit(CommitRange{partitionSession: &PartitionSession{}}))
+
+		clock.BlockUntil(1)
+		clock.Advance(time.Second)
+		<-sendCalled
+	})
+	t.Run("FlushOnClose", func(t *testing.T) {
+		ctx := testContext(t)
+		c := newTestCommitter(ctx, t)
+
+		sendCalled := false
+		c.send = func(mess rawtopicreader.ClientMessage) error {
+			sendCalled = true
+			return nil
+		}
+		c.commits = []CommitRange{{partitionSession: &PartitionSession{}}}
+		require.NoError(t, c.Close(ctx, nil))
+		require.True(t, sendCalled)
+	})
+}
+
+func newTestCommitter(ctx context.Context, t *testing.T) *committer {
+	res := newCommitter(ctx, CommitModeAsync, func(mess rawtopicreader.ClientMessage) error {
+		return nil
+	})
+	t.Cleanup(func() {
+		require.NoError(t, res.Close(ctx, errors.New("test comitter closed")))
+	})
+	return res
 }

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
@@ -34,7 +33,6 @@ type Reader struct {
 	oneMessage         chan *Message
 
 	messageReaderLoopOnce sync.Once
-	background            backgroundworkers.BackgroundWorker
 }
 
 type readMessageBatchOptions struct {
@@ -80,9 +78,9 @@ func (r *Reader) initChannels() {
 }
 
 func (r *Reader) Close() error {
-	err := r.background.Close(context.TODO())
 	r.reader.Close(context.TODO(), errReaderClosed)
-	return err
+	// TODO: err
+	return nil
 }
 
 // ReadMessageBatch read batch of messages.

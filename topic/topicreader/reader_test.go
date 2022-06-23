@@ -9,8 +9,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 )
 
 func TestReader_Close(t *testing.T) {
@@ -38,7 +36,6 @@ func TestReader_Close(t *testing.T) {
 	reader := &Reader{
 		reader:                baseReader,
 		messageReaderLoopOnce: sync.Once{},
-		background:            backgroundworkers.BackgroundWorker{},
 	}
 
 	type callState struct {

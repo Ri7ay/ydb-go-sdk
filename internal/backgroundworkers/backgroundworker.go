@@ -5,6 +5,7 @@ import (
 	"runtime/pprof"
 	"sync"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
@@ -18,17 +19,22 @@ type BackgroundWorker struct {
 	onceInit sync.Once
 
 	m      xsync.Mutex
-	cancel context.CancelFunc
-	closed bool
+	cancel xcontext.CancelErrFunc
 }
 
 func New(parent context.Context) *BackgroundWorker {
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := xcontext.WithErrCancel(parent)
 
 	return &BackgroundWorker{
 		ctx:    ctx,
 		cancel: cancel,
 	}
+}
+
+func (b *BackgroundWorker) Context() context.Context {
+	b.init()
+
+	return b.ctx
 }
 
 func (b *BackgroundWorker) Start(name string, f func(ctx context.Context)) {
@@ -37,7 +43,7 @@ func (b *BackgroundWorker) Start(name string, f func(ctx context.Context)) {
 	b.m.Lock()
 	defer b.m.Unlock()
 
-	if b.closed {
+	if b.ctx.Err() != nil {
 		return
 	}
 
@@ -58,14 +64,10 @@ func (b *BackgroundWorker) Done() <-chan struct{} {
 	return b.ctx.Done()
 }
 
-func (b *BackgroundWorker) Close(ctx context.Context) error {
+func (b *BackgroundWorker) Close(ctx context.Context, err error) error {
 	b.init()
 
-	b.m.WithLock(func() {
-		b.closed = true
-	})
-
-	b.cancel()
+	b.cancel(err)
 
 	waitChan := make(chan struct{}, 1)
 
@@ -85,7 +87,7 @@ func (b *BackgroundWorker) Close(ctx context.Context) error {
 func (b *BackgroundWorker) init() {
 	b.onceInit.Do(func() {
 		if b.ctx == nil {
-			b.ctx, b.cancel = context.WithCancel(context.Background())
+			b.ctx, b.cancel = xcontext.WithErrCancel(context.Background())
 		}
 	})
 }

@@ -95,7 +95,7 @@ func (r *readerReconnector) Close(ctx context.Context, err error) {
 			r.closedErr = err
 		})
 
-		_ = r.background.Close(ctx)
+		_ = r.background.Close(ctx, err)
 
 		if r.streamVal != nil {
 			r.streamVal.Close(ctx, xerrors.WithStackTrace(errReaderClosed))

@@ -11,7 +11,26 @@ import (
 
 type ReaderOption func(cfg *readerConfig)
 
-func WithBatchOptions(options ...ReadBatchOption) ReaderOption {
+// WithCommitTimeLagTrigger set time lag from first commit message before send commit to server
+// for accumulate many similar-time commits to one server request
+// 0 mean no additional lag and send commit soon as possible
+// Default value: 1 second
+func WithCommitTimeLagTrigger(lag time.Duration) ReaderOption {
+	return func(cfg *readerConfig) {
+		cfg.SendBatchTimeLagTrigger = lag
+	}
+}
+
+// WithCommitCountTrigger set count trigger for send batch to server
+// if count > 0 and sdk count of buffered commits >= count - send commit request to server
+// 0 mean no count limit and use timer lag trigger only
+func WithCommitCountTrigger(count int) ReaderOption {
+	return func(cfg *readerConfig) {
+		cfg.SendBatchCounterTrigger = count
+	}
+}
+
+func WithBatchReadOptions(options ...ReadBatchOption) ReaderOption {
 	return func(cfg *readerConfig) {
 		batchOptions := newReadMessageBatchOptions()
 		for _, opt := range options {

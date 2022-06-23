@@ -61,12 +61,21 @@ func NewBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		cMess.Offset = sMess.Offset
 		cMess.EndOffset = sMess.Offset + 1
 
+		if i == 0 {
+			// auto commit received holes
+			cMess.Offset = session.lastReseivedOffsetEnd()
+		}
+
 		messData := &cMess.MessageData
 		messData.SeqNo = sMess.SeqNo
 		messData.CreatedAt = sMess.CreatedAt
 		messData.rawDataLen = len(sMess.Data)
 		messData.Data = createReader(sb.Codec, sMess.Data)
 		messData.WrittenAt = sb.WrittenAt
+	}
+
+	if len(sb.MessageData) > 0 {
+		session.setLastReseivedOffsetEnd(sb.MessageData[len(sb.MessageData)-1].Offset + 1)
 	}
 
 	return newBatch(session, messages)

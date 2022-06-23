@@ -19,19 +19,27 @@ type PartitionSession struct {
 	ctxCancel          xcontext.CancelErrFunc
 	partitionSessionID rawtopicreader.PartitionSessionID
 
-	committedOffsetVal int64
+	lastReceivedOffsetEndVal int64
+	committedOffsetVal       int64
 }
 
-func newPartitionSession(partitionContext context.Context, topic string, partitionID int64, partitionSessionID rawtopicreader.PartitionSessionID, committedOffset rawtopicreader.Offset) *PartitionSession {
+func newPartitionSession(
+	partitionContext context.Context,
+	topic string,
+	partitionID int64,
+	partitionSessionID rawtopicreader.PartitionSessionID,
+	committedOffset rawtopicreader.Offset,
+) *PartitionSession {
 	partitionContext, cancel := xcontext.WithErrCancel(partitionContext)
 
 	return &PartitionSession{
-		Topic:              topic,
-		PartitionID:        partitionID,
-		ctx:                partitionContext,
-		ctxCancel:          cancel,
-		partitionSessionID: partitionSessionID,
-		committedOffsetVal: committedOffset.ToInt64(),
+		Topic:                    topic,
+		PartitionID:              partitionID,
+		ctx:                      partitionContext,
+		ctxCancel:                cancel,
+		partitionSessionID:       partitionSessionID,
+		committedOffsetVal:       committedOffset.ToInt64(),
+		lastReceivedOffsetEndVal: committedOffset.ToInt64(),
 	}
 }
 
@@ -52,6 +60,18 @@ func (s *PartitionSession) committedOffset() rawtopicreader.Offset {
 }
 
 func (s *PartitionSession) setCommittedOffset(v rawtopicreader.Offset) {
+	atomic.StoreInt64(&s.committedOffsetVal, v.ToInt64())
+}
+
+func (s *PartitionSession) lastReseivedOffsetEnd() rawtopicreader.Offset {
+	v := atomic.LoadInt64(&s.lastReceivedOffsetEndVal)
+
+	var res rawtopicreader.Offset
+	res.FromInt64(v)
+	return res
+}
+
+func (s *PartitionSession) setLastReseivedOffsetEnd(v rawtopicreader.Offset) {
 	atomic.StoreInt64(&s.committedOffsetVal, v.ToInt64())
 }
 

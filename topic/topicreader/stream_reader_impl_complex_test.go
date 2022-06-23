@@ -3,12 +3,15 @@ package topicreader
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime/pprof"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 
@@ -129,6 +132,7 @@ type streamEnv struct {
 	ctx                context.Context
 	t                  testing.TB
 	reader             *topicStreamReaderImpl
+	stopReadEvents     emptyChan
 	stream             *MockRawStreamReader
 	partitionSessionID partitionSessionID
 	mc                 *gomock.Controller
@@ -147,24 +151,16 @@ type testStreamResult struct {
 }
 
 func newTopicReaderTestEnv(t testing.TB) streamEnv {
-	cleanCtx := context.Background()
-	t.Cleanup(func() {
-		pprof.SetGoroutineLabels(cleanCtx)
-	})
-
-	ctx := pprof.WithLabels(cleanCtx, pprof.Labels("test", t.Name()))
-	pprof.SetGoroutineLabels(ctx)
-	ctx, ctxCancel := xcontext.WithErrCancel(ctx)
-	// call cleanup in defer for cancel test context before start other cleanup functions
-	defer t.Cleanup(func() {
-		ctxCancel(errors.New("test cleanup"))
-	})
+	ctx := testContext(t)
 
 	mc := gomock.NewController(t)
 
 	stream := NewMockRawStreamReader(mc)
 
-	reader, err := newTopicStreamReaderStopped(stream, newTopicStreamReaderConfig())
+	cfg := newTopicStreamReaderConfig()
+	cfg.BaseContext = ctx
+
+	reader, err := newTopicStreamReaderStopped(stream, cfg)
 	require.NoError(t, err)
 	// reader.initSession() - skip stream level initialization
 
@@ -178,6 +174,7 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 		ctx:                        ctx,
 		t:                          t,
 		reader:                     reader,
+		stopReadEvents:             make(emptyChan),
 		stream:                     stream,
 		messagesFromServerToClient: make(chan testStreamResult),
 		partitionSession:           session,
@@ -192,7 +189,8 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 		cleanupTimeout, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		env.reader.Close(cleanupTimeout, errors.New("test finished"))
+		close(env.stopReadEvents)
+		env.reader.Close(ctx, errors.New("test finished"))
 		require.NoError(t, cleanupTimeout.Err())
 	})
 
@@ -253,6 +251,8 @@ readMessages:
 		select {
 		case <-e.ctx.Done():
 			return nil, e.ctx.Err()
+		case <-e.stopReadEvents:
+			return nil, xerrors.NewWithStackTrace("mock reader closed")
 		case res := <-e.messagesFromServerToClient:
 			if res.waitOnly {
 				continue readMessages
@@ -263,4 +263,16 @@ readMessages:
 			return res.mess, res.err
 		}
 	}
+}
+
+func testContext(t testing.TB) context.Context {
+	ctx, cancel := xcontext.WithErrCancel(context.Background())
+	ctx = pprof.WithLabels(ctx, pprof.Labels("test", t.Name()))
+	pprof.SetGoroutineLabels(ctx)
+
+	t.Cleanup(func() {
+		pprof.SetGoroutineLabels(ctx)
+		cancel(fmt.Errorf("test context finished: %v", t.Name()))
+	})
+	return ctx
 }
