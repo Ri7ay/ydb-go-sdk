@@ -243,7 +243,7 @@ func (g *InitRequest) toProto() *Ydb_PersQueue_V1.StreamingReadClientMessage_Ini
 		Consumer:                  g.Consumer,
 		MaxSupportedFormatVersion: 0,
 		MaxMetaCacheSize:          1024 * 1024 * 1024, // TODO: fix
-		IdleTimeoutMs:             time.Minute.Milliseconds(),
+		IdleTimeoutMs:             (time.Second * 15).Milliseconds(),
 	}
 
 	p.TopicsReadSettings = make([]*Ydb_PersQueue_V1.StreamingReadClientMessage_TopicReadSettings, 0, len(g.TopicsReadSettings))

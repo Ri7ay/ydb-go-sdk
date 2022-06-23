@@ -439,7 +439,10 @@ func (r *topicStreamReaderImpl) freeBufferFromMessages(batch Batch) {
 	for messageIndex := range batch.Messages {
 		size += batch.Messages[messageIndex].bufferBytesAccount
 	}
-	r.freeBytes <- size
+	select {
+	case r.freeBytes <- size:
+	case <-r.ctx.Done():
+	}
 }
 
 func (r *topicStreamReaderImpl) updateTokenLoop(ctx context.Context) {

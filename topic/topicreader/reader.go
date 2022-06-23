@@ -138,31 +138,6 @@ func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
 	return r.reader.Commit(ctx, offset.GetCommitOffset())
 }
 
-func (r *Reader) messageReaderLoop(ctx context.Context) {
-	ctxDone := ctx.Done()
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-
-		batch, err := r.ReadMessageBatch(ctx)
-		// TODO: log
-		if err != nil {
-			continue
-		}
-
-		for index := range batch.Messages {
-			select {
-			case r.oneMessage <- &batch.Messages[index]:
-				// pass
-			case <-ctxDone:
-				// stop work
-				return
-			}
-		}
-	}
-}
-
 type readerConfig struct {
 	DefaultBatchConfig readMessageBatchOptions
 	topicStreamReaderConfig

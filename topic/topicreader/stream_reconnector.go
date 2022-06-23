@@ -220,5 +220,5 @@ func (r *readerReconnector) handlePanic() {
 }
 
 func isRetryableError(err error) bool {
-	return errors.Is(err, context.Canceled) || xerrors.RetryableError(err) != nil
+	return xerrors.RetryableError(err) != nil
 }

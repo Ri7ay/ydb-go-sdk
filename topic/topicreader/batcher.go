@@ -135,6 +135,9 @@ func (o batcherGetOptions) splitBatch(batch Batch) (head, rest Batch, ok bool) {
 }
 
 func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMessageOrderItem, err error) {
+	if err := ctx.Err(); err != nil {
+		return batcherMessageOrderItem{}, err
+	}
 	var findRes batcherResultCandidate
 	b.m.WithLock(func() {
 		findRes = b.findNeedLock(0, []batcherWaiter{{Options: opts}})
