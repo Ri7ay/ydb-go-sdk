@@ -55,6 +55,7 @@ func (offset *OptionalOffset) FromInt64Pointer(v *int64) {
 		offset.Offset.FromInt64(*v)
 	}
 }
+
 func (offset *OptionalOffset) FromInt64(v int64) {
 	offset.FromInt64Pointer(&v)
 }
@@ -178,12 +179,15 @@ func (*clientMessageImpl) isClientMessage() {}
 
 type ServerMessageMetadata struct {
 	Status rawydb.StatusCode
-	Issues []YdbIssueMessage
+	Issues rawydb.Issues
 }
 
-func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage) {
-	m.Status.FromProto(p.Status)
-	// TODO
+func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage) error {
+	if err := m.Status.FromProto(p.Status); err != nil {
+		return err
+	}
+
+	return m.Issues.FromProto(p.Issues)
 }
 
 func (m *ServerMessageMetadata) StatusData() ServerMessageMetadata {
@@ -193,8 +197,6 @@ func (m *ServerMessageMetadata) StatusData() ServerMessageMetadata {
 func (m *ServerMessageMetadata) SetStatus(status rawydb.StatusCode) {
 	m.Status = status
 }
-
-type YdbIssueMessage struct{}
 
 type ServerMessage interface {
 	isServerMessage()
