@@ -11,6 +11,8 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
@@ -23,6 +25,60 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
+
+func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
+	e := newTopicReaderTestEnv(t)
+	e.Start()
+
+	lastOffset := e.partitionSession.lastReceivedMessageOffset()
+	const dataSize = 4
+
+	// send message with stole offsets
+	//
+	e.SendFromServer(&rawtopicreader.ReadResponse{
+		BytesSize: dataSize,
+		PartitionData: []rawtopicreader.PartitionData{
+			{
+				PartitionSessionID: e.partitionSessionID,
+				Batches: []rawtopicreader.Batch{
+					{
+						Codec:          rawtopic.CodecRaw,
+						MessageGroupID: "1",
+						MessageData: []rawtopicreader.MessageData{
+							{
+								Offset: lastOffset + 10,
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	// request new data portion
+	e.stream.EXPECT().Send(&rawtopicreader.ReadRequest{BytesSize: dataSize})
+
+	// Expect commit message with stole
+	e.stream.EXPECT().Send(
+		&rawtopicreader.CommitOffsetRequest{
+			CommitOffsets: []rawtopicreader.PartitionCommitOffset{
+				{
+					PartitionSessionID: e.partitionSessionID,
+					Offsets: []rawtopicreader.OffsetRange{
+						{
+							Start: lastOffset + 1,
+							End:   lastOffset + 11,
+						},
+					},
+				},
+			},
+		},
+	)
+
+	batch, err := e.reader.ReadMessageBatch(e.ctx, newReadMessageBatchOptions())
+	require.NoError(t, err)
+	require.NoError(t, e.reader.Commit(e.ctx, batch.GetCommitOffset()))
+}
 
 func TestTopicStreamReaderImpl_Create(t *testing.T) {
 	t.Run("BadSessionInitialization", func(t *testing.T) {

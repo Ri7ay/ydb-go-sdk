@@ -37,8 +37,6 @@ type MessageData struct { // Данные для записи. Так же эм�
 }
 
 type Message struct {
-	PartitionSession *PartitionSession
-
 	MessageData
 	CommitRange
 
@@ -46,11 +44,11 @@ type Message struct {
 }
 
 func (m *Message) Context() context.Context {
-	return m.PartitionSession.Context()
+	return m.CommitRange.session().Context()
 }
 
 func (m *Message) Topic() string {
-	return m.PartitionSession.Topic
+	return m.session().Topic
 }
 
 var (

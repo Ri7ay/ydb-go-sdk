@@ -29,15 +29,17 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 			return Batch{}, xerrors.NewWithStackTrace("ydb: bad message offset while messages batch create")
 		}
 
-		if mess.PartitionSession == nil {
-			mess.PartitionSession = session
+		if mess.session() == nil {
+			mess.partitionSession = session
 		}
-		if session != mess.PartitionSession {
+		if session != mess.session() {
 			return Batch{}, xerrors.NewWithStackTrace("ydb: bad session while messages batch create")
 		}
 	}
 
-	offset := CommitRange{}
+	offset := CommitRange{
+		partitionSession: session,
+	}
 	if len(messages) > 0 {
 		offset.Offset = messages[0].Offset
 		offset.EndOffset = messages[len(messages)-1].EndOffset
@@ -57,13 +59,13 @@ func NewBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		sMess := &sb.MessageData[i]
 
 		cMess := &messages[i]
-		cMess.PartitionSession = session
+		cMess.CommitRange.partitionSession = session
 		cMess.Offset = sMess.Offset
 		cMess.EndOffset = sMess.Offset + 1
 
 		if i == 0 {
 			// auto commit received holes
-			cMess.Offset = session.lastReceivedOffsetEnd()
+			cMess.Offset = session.lastReceivedMessageOffset() + 1
 		}
 
 		messData := &cMess.MessageData
@@ -75,7 +77,7 @@ func NewBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 	}
 
 	if len(sb.MessageData) > 0 {
-		session.setLastReceivedOffsetEnd(sb.MessageData[len(sb.MessageData)-1].Offset + 1)
+		session.setLastReceivedMessageOffset(sb.MessageData[len(sb.MessageData)-1].Offset)
 	}
 
 	return newBatch(session, messages)

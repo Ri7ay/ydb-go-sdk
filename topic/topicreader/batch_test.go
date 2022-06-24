@@ -11,12 +11,10 @@ func TestBatch_New(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		session := &PartitionSession{}
 		m1 := Message{
-			CommitRange:      CommitRange{Offset: 1, EndOffset: 2},
-			PartitionSession: session,
+			CommitRange: CommitRange{Offset: 1, EndOffset: 2, partitionSession: session},
 		}
 		m2 := Message{
-			CommitRange:      CommitRange{Offset: 2, EndOffset: 3},
-			PartitionSession: session,
+			CommitRange: CommitRange{Offset: 2, EndOffset: 3, partitionSession: session},
 		}
 		batch, err := newBatch(session, []Message{m1, m2})
 		require.NoError(t, err)

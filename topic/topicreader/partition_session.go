@@ -63,7 +63,7 @@ func (s *PartitionSession) setCommittedOffset(v rawtopicreader.Offset) {
 	atomic.StoreInt64(&s.committedOffsetVal, v.ToInt64())
 }
 
-func (s *PartitionSession) lastReceivedOffsetEnd() rawtopicreader.Offset {
+func (s *PartitionSession) lastReceivedMessageOffset() rawtopicreader.Offset {
 	v := atomic.LoadInt64(&s.lastReceivedOffsetEndVal)
 
 	var res rawtopicreader.Offset
@@ -71,7 +71,7 @@ func (s *PartitionSession) lastReceivedOffsetEnd() rawtopicreader.Offset {
 	return res
 }
 
-func (s *PartitionSession) setLastReceivedOffsetEnd(v rawtopicreader.Offset) {
+func (s *PartitionSession) setLastReceivedMessageOffset(v rawtopicreader.Offset) {
 	atomic.StoreInt64(&s.lastReceivedOffsetEndVal, v.ToInt64())
 }
 
