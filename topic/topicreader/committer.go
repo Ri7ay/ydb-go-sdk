@@ -32,7 +32,7 @@ type committer struct {
 
 	m       xsync.Mutex
 	waiters []commitWaiter
-	commits []commitRange
+	commits CommitRages
 }
 
 func newCommitter(lifeContext context.Context, mode CommitMode, send sendMessageToServerFunc) *committer {
@@ -87,7 +87,7 @@ func (c *committer) pushCommit(commitRange commitRange) error {
 			return
 		}
 
-		c.commits = append(c.commits, commitRange)
+		c.commits.Append(commitRange)
 	})
 
 	select {
@@ -102,18 +102,18 @@ func (c *committer) pushCommitsLoop(ctx context.Context) {
 	for {
 		c.waitSendTrigger(ctx)
 
-		var commits commitBatch
+		var commits CommitRages
 		c.m.WithLock(func() {
 			commits = c.commits
-			c.commits = make([]commitRange, 0, len(commits))
+			c.commits = NewCommitRangesWithCapacity(commits.len() * 2)
 		})
 
-		if len(commits) == 0 && c.backgroundWorker.Context().Err() != nil {
+		if commits.len() == 0 && c.backgroundWorker.Context().Err() != nil {
 			// committer closed with empty buffer - target close state
 			return
 		}
 
-		commits = commits.compress()
+		commits.optimize()
 		if err := sendCommitMessage(c.send, commits); err != nil {
 			_ = c.backgroundWorker.Close(ctx, err)
 		}
@@ -144,7 +144,7 @@ func (c *committer) waitSendTrigger(ctx context.Context) {
 	for {
 		var commitsLen int
 		c.m.WithLock(func() {
-			commitsLen = len(c.commits)
+			commitsLen = c.commits.len()
 		})
 		if commitsLen >= c.BufferCountTrigger {
 			return
@@ -246,7 +246,7 @@ func newCommitWaiter(session *PartitionSession, endOffset rawtopicreader.Offset)
 	}
 }
 
-func sendCommitMessage(send sendMessageToServerFunc, batch commitBatch) error {
+func sendCommitMessage(send sendMessageToServerFunc, batch CommitRages) error {
 	req := &rawtopicreader.CommitOffsetRequest{
 		CommitOffsets: batch.toPartitionsOffsets(),
 	}

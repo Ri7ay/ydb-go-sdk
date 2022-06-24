@@ -61,7 +61,7 @@ func TestCommitterCommitAsync(t *testing.T) {
 			close(sendCalled)
 			require.Equal(t,
 				&rawtopicreader.CommitOffsetRequest{
-					CommitOffsets: commitBatch{commitRange}.toPartitionsOffsets(),
+					CommitOffsets: NewCommitRanges(commitRange).toPartitionsOffsets(),
 				},
 				mess)
 			return nil
@@ -92,7 +92,7 @@ func TestCommitterCommitSync(t *testing.T) {
 			sendCalled = true
 			require.Equal(t,
 				&rawtopicreader.CommitOffsetRequest{
-					CommitOffsets: commitBatch{commitRange}.toPartitionsOffsets(),
+					CommitOffsets: NewCommitRanges(commitRange).toPartitionsOffsets(),
 				},
 				mess)
 			c.OnCommitNotify(session, commitRange.EndOffset)
@@ -228,11 +228,11 @@ func TestCommitterBuffer(t *testing.T) {
 			close(sendCalled)
 			return nil
 		}
-		c.commits = []commitRange{
+		c.commits.appendCommitRanges([]commitRange{
 			{partitionSession: &PartitionSession{partitionSessionID: 1}},
 			{partitionSession: &PartitionSession{partitionSessionID: 2}},
 			{partitionSession: &PartitionSession{partitionSessionID: 3}},
-		}
+		})
 
 		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{partitionSessionID: 4}}))
 		<-sendCalled
@@ -309,7 +309,7 @@ func TestCommitterBuffer(t *testing.T) {
 			sendCalled = true
 			return nil
 		}
-		c.commits = []commitRange{{partitionSession: &PartitionSession{}}}
+		c.commits.appendCommitRange(commitRange{partitionSession: &PartitionSession{}})
 		require.NoError(t, c.Close(ctx, nil))
 		require.True(t, sendCalled)
 	})

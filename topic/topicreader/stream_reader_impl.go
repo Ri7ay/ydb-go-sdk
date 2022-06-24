@@ -272,7 +272,7 @@ func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange commitRa
 	return r.committer.Commit(ctx, commitRange)
 }
 
-func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets commitBatch) error {
+func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets CommitRages) error {
 	req := &rawtopicreader.CommitOffsetRequest{
 		CommitOffsets: offsets.toPartitionsOffsets(),
 	}

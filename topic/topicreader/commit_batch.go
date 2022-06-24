@@ -10,56 +10,70 @@ type committedBySingleRange interface { // Интерфейс, который м
 	getCommitRange() commitRange
 }
 
-type commitBatch []commitRange
-
-func CommitBatchFromMessages(messages ...Message) commitBatch {
-	var res commitBatch
-	res.AppendMessages(messages...)
-	return res
+type CommitRages struct {
+	ranges []commitRange
 }
 
-func CommitBatchFromCommitableByOffset(commitable ...committedBySingleRange) commitBatch {
-	var res commitBatch
+func (r *CommitRages) len() int {
+	return len(r.ranges)
+}
+
+func NewCommitRangesWithCapacity(capacity int) CommitRages {
+	return CommitRages{ranges: make([]commitRange, 0, capacity)}
+}
+
+func NewCommitRanges(commitable ...committedBySingleRange) CommitRages {
+	var res CommitRages
 	res.Append(commitable...)
 	return res
 }
 
-func (b *commitBatch) Append(messages ...committedBySingleRange) {
-	for i := range messages {
-		*b = append(*b, messages[i].getCommitRange())
+func (r *CommitRages) Append(ranges ...committedBySingleRange) {
+	converted := make([]commitRange, len(ranges))
+
+	for i := range ranges {
+		converted[i] = ranges[i].getCommitRange()
+		r.ranges = append(r.ranges, converted...)
 	}
 }
 
-func (b *commitBatch) AppendMessages(messages ...Message) {
+func (r *CommitRages) AppendMessages(messages ...Message) {
+	converted := make([]commitRange, len(messages))
+
 	for i := range messages {
-		*b = append(*b, messages[i].getCommitRange())
+		converted[i] = messages[i].getCommitRange()
+		r.ranges = append(r.ranges, converted...)
 	}
 }
 
-func (b *commitBatch) compress() commitBatch {
-	return compressCommits(*b)
+func (r *CommitRages) appendCommitRange(cr commitRange) {
+	r.ranges = append(r.ranges, cr)
 }
 
-func (b commitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffset {
-	if len(b) == 0 {
+func (r *CommitRages) appendCommitRanges(ranges []commitRange) {
+	r.ranges = append(r.ranges, ranges...)
+}
+
+func (r *CommitRages) Reset() {
+	r.ranges = r.ranges[:0]
+}
+
+func (r CommitRages) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffset {
+	if len(r.ranges) == 0 {
 		return nil
 	}
 
-	commits := compressCommits(b)
-	return commitsToRawPartitionCommitOffset(commits)
+	r.optimize()
+	return r.toRawPartitionCommitOffset()
 }
 
-func compressCommits(commitsOrig []commitRange) []commitRange {
-	if len(commitsOrig) == 0 {
-		return nil
+func (r *CommitRages) optimize() {
+	if r.len() == 0 {
+		return
 	}
 
-	// prevent broke argument
-	sortedCommits := make([]commitRange, len(commitsOrig))
-	copy(sortedCommits, commitsOrig)
-
-	sort.Slice(sortedCommits, func(i, j int) bool {
-		cI, cJ := &sortedCommits[i], &sortedCommits[j]
+	sort.Slice(r.ranges, func(i, j int) bool {
+		cI, cJ := &r.ranges[i], &r.ranges[j]
 		switch {
 		case cI.partitionSession.partitionSessionID < cJ.partitionSession.partitionSessionID:
 			return true
@@ -72,10 +86,10 @@ func compressCommits(commitsOrig []commitRange) []commitRange {
 		}
 	})
 
-	newCommits := sortedCommits[:1]
+	newCommits := r.ranges[:1]
 	lastCommit := &newCommits[0]
-	for i := 1; i < len(sortedCommits); i++ {
-		commit := &sortedCommits[i]
+	for i := 1; i < len(r.ranges); i++ {
+		commit := &r.ranges[i]
 		if lastCommit.partitionSession.partitionSessionID == commit.partitionSession.partitionSessionID &&
 			lastCommit.EndOffset == commit.Offset {
 			lastCommit.EndOffset = commit.EndOffset
@@ -84,11 +98,12 @@ func compressCommits(commitsOrig []commitRange) []commitRange {
 			lastCommit = &newCommits[len(newCommits)-1]
 		}
 	}
-	return newCommits
+
+	r.ranges = newCommits
 }
 
-func commitsToRawPartitionCommitOffset(commits []commitRange) []rawtopicreader.PartitionCommitOffset {
-	if len(commits) == 0 {
+func (r *CommitRages) toRawPartitionCommitOffset() []rawtopicreader.PartitionCommitOffset {
+	if len(r.ranges) == 0 {
 		return nil
 	}
 
@@ -98,12 +113,12 @@ func commitsToRawPartitionCommitOffset(commits []commitRange) []rawtopicreader.P
 		}
 	}
 
-	partitionOffsets := make([]rawtopicreader.PartitionCommitOffset, 0, len(commits))
-	partitionOffsets = append(partitionOffsets, newPartition(commits[0].partitionSession.partitionSessionID))
+	partitionOffsets := make([]rawtopicreader.PartitionCommitOffset, 0, len(r.ranges))
+	partitionOffsets = append(partitionOffsets, newPartition(r.ranges[0].partitionSession.partitionSessionID))
 	partition := &partitionOffsets[0]
 
-	for i := range commits {
-		commit := &commits[i]
+	for i := range r.ranges {
+		commit := &r.ranges[i]
 		offsetsRange := rawtopicreader.OffsetRange{
 			Start: commit.Offset,
 			End:   commit.EndOffset,

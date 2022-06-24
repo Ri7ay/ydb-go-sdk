@@ -159,15 +159,10 @@ func TestCompressCommitsInplace(t *testing.T) {
 	}
 	for _, test := range table {
 		t.Run(test.name, func(t *testing.T) {
-			var src []commitRange
-			if test.source != nil {
-				src = make([]commitRange, len(test.source))
-				copy(src, test.source)
-			}
-
-			res := compressCommits(test.source)
-			require.Equal(t, src, test.source) // check about doesn't touch source
-			require.Equal(t, test.expected, res)
+			var v CommitRages
+			v.ranges = test.source
+			v.optimize()
+			require.Equal(t, test.expected, v.ranges)
 		})
 	}
 }
@@ -274,7 +269,9 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 
 	for _, test := range table {
 		t.Run(test.name, func(t *testing.T) {
-			res := commitsToRawPartitionCommitOffset(test.source)
+			var v CommitRages
+			v.ranges = test.source
+			res := v.toRawPartitionCommitOffset()
 			require.Equal(t, test.expected, res)
 		})
 	}

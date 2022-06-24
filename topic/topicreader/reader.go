@@ -138,6 +138,39 @@ func (r *Reader) Commit(ctx context.Context, offset committedBySingleRange) erro
 	return r.reader.Commit(ctx, offset.getCommitRange())
 }
 
+// CommitRanges commit all from commitRanges
+// commitRanges will reset before exit and can use for accomulate new commits
+func (r *Reader) CommitRanges(ctx context.Context, commitRanges *CommitRages) error {
+	defer commitRanges.Reset()
+
+	commitRanges.optimize()
+
+	commitErrors := make(chan error, commitRanges.len())
+
+	var wg sync.WaitGroup
+
+	commit := func(cr commitRange) {
+		defer wg.Done()
+		commitErrors <- r.Commit(ctx, cr)
+	}
+
+	wg.Add(commitRanges.len())
+	for _, cr := range commitRanges.ranges {
+		go commit(cr)
+	}
+	wg.Wait()
+	close(commitErrors)
+
+	// return first error
+	for err := range commitErrors {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type readerConfig struct {
 	DefaultBatchConfig readMessageBatchOptions
 	topicStreamReaderConfig
