@@ -262,7 +262,7 @@ func (r *topicStreamReaderImpl) onPartitionSessionStatusResponseFromBuffer(ctx c
 	panic("not implemented")
 }
 
-func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange CommitRange) error {
+func (r *topicStreamReaderImpl) Commit(ctx context.Context, commitRange commitRange) error {
 	if err := r.checkCommitRange(commitRange); err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets CommitB
 	return r.stream.Send(req)
 }
 
-func (r *topicStreamReaderImpl) checkCommitRange(commitRange CommitRange) error {
+func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error {
 	session := commitRange.partitionSession
 
 	if session == nil {

@@ -16,19 +16,19 @@ func TestBatcher_PushBatch(t *testing.T) {
 
 	m11 := Message{
 		WrittenAt:   testTime(1),
-		CommitRange: CommitRange{partitionSession: session1},
+		commitRange: commitRange{partitionSession: session1},
 	}
 	m12 := Message{
 		WrittenAt:   testTime(2),
-		CommitRange: CommitRange{partitionSession: session1},
+		commitRange: commitRange{partitionSession: session1},
 	}
 	m21 := Message{
 		WrittenAt:   testTime(3),
-		CommitRange: CommitRange{partitionSession: session2},
+		commitRange: commitRange{partitionSession: session2},
 	}
 	m22 := Message{
 		WrittenAt:   testTime(4),
-		CommitRange: CommitRange{partitionSession: session2},
+		commitRange: commitRange{partitionSession: session2},
 	}
 
 	batch1 := mustNewBatch(session1, []Message{m11, m12})
@@ -121,8 +121,8 @@ func TestBatcher_Pop(t *testing.T) {
 		ctx := context.Background()
 		session1 := &PartitionSession{}
 		session2 := &PartitionSession{}
-		batch := mustNewBatch(session1, []Message{{WrittenAt: testTime(1), CommitRange: CommitRange{partitionSession: session1}}})
-		batch2 := mustNewBatch(session2, []Message{{WrittenAt: testTime(2), CommitRange: CommitRange{partitionSession: session2}}})
+		batch := mustNewBatch(session1, []Message{{WrittenAt: testTime(1), commitRange: commitRange{partitionSession: session1}}})
+		batch2 := mustNewBatch(session2, []Message{{WrittenAt: testTime(2), commitRange: commitRange{partitionSession: session2}}})
 
 		b := newBatcher()
 		require.NoError(t, b.PushBatch(batch))

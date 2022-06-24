@@ -9,6 +9,6 @@ import (
 
 type batchedStreamReader interface {
 	ReadMessageBatch(ctx context.Context, opts readMessageBatchOptions) (Batch, error)
-	Commit(ctx context.Context, commitRange CommitRange) error
+	Commit(ctx context.Context, commitRange commitRange) error
 	Close(ctx context.Context, err error)
 }

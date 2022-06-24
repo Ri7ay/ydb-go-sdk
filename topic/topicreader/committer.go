@@ -32,7 +32,7 @@ type committer struct {
 
 	m       xsync.Mutex
 	waiters []commitWaiter
-	commits []CommitRange
+	commits []commitRange
 }
 
 func newCommitter(lifeContext context.Context, mode CommitMode, send sendMessageToServerFunc) *committer {
@@ -59,7 +59,7 @@ func (c *committer) Close(ctx context.Context, err error) error {
 	return c.backgroundWorker.Close(ctx, err)
 }
 
-func (c *committer) Commit(ctx context.Context, commitRange CommitRange) error {
+func (c *committer) Commit(ctx context.Context, commitRange commitRange) error {
 	if !c.mode.commitsEnabled() {
 		return ErrCommitDisabled
 	}
@@ -79,7 +79,7 @@ func (c *committer) Commit(ctx context.Context, commitRange CommitRange) error {
 	return nil
 }
 
-func (c *committer) pushCommit(commitRange CommitRange) error {
+func (c *committer) pushCommit(commitRange commitRange) error {
 	var res error
 	c.m.WithLock(func() {
 		if err := c.backgroundWorker.Context().Err(); err != nil {
@@ -105,7 +105,7 @@ func (c *committer) pushCommitsLoop(ctx context.Context) {
 		var commits CommitBatch
 		c.m.WithLock(func() {
 			commits = c.commits
-			c.commits = make([]CommitRange, 0, len(commits))
+			c.commits = make([]commitRange, 0, len(commits))
 		})
 
 		if len(commits) == 0 && c.backgroundWorker.Context().Err() != nil {
@@ -161,7 +161,7 @@ func (c *committer) waitSendTrigger(ctx context.Context) {
 	}
 }
 
-func (c *committer) waitCommitAck(ctx context.Context, commitRange CommitRange) error {
+func (c *committer) waitCommitAck(ctx context.Context, commitRange commitRange) error {
 	session := commitRange.partitionSession
 
 	waiter := newCommitWaiter(session, commitRange.EndOffset)

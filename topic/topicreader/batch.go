@@ -11,7 +11,7 @@ import (
 type Batch struct {
 	Messages []Message
 
-	CommitRange // от всех сообщений батча
+	commitRange // от всех сообщений батча
 
 	partitionSession *PartitionSession
 }
@@ -37,7 +37,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 		}
 	}
 
-	offset := CommitRange{
+	offset := commitRange{
 		partitionSession: session,
 	}
 	if len(messages) > 0 {
@@ -48,7 +48,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 	return Batch{
 		partitionSession: session,
 		Messages:         messages,
-		CommitRange:      offset,
+		commitRange:      offset,
 	}, nil
 }
 
@@ -59,7 +59,7 @@ func NewBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		sMess := &sb.MessageData[i]
 
 		cMess := &messages[i]
-		cMess.CommitRange.partitionSession = session
+		cMess.commitRange.partitionSession = session
 		cMess.Offset = sMess.Offset
 		cMess.EndOffset = sMess.Offset + 1
 

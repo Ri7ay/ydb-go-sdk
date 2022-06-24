@@ -38,13 +38,13 @@ type MessageData struct { // Данные для записи. Так же эм�
 
 type Message struct {
 	MessageData
-	CommitRange
+	commitRange
 
 	WrittenAt time.Time
 }
 
 func (m *Message) Context() context.Context {
-	return m.CommitRange.session().Context()
+	return m.commitRange.session().Context()
 }
 
 func (m *Message) Topic() string {
@@ -53,21 +53,21 @@ func (m *Message) Topic() string {
 
 var (
 	_ CommitableByOffset = Message{}
-	_ CommitableByOffset = CommitRange{}
+	_ CommitableByOffset = commitRange{}
 )
 
-type CommitRange struct {
+type commitRange struct {
 	Offset    rawtopicreader.Offset
 	EndOffset rawtopicreader.Offset
 
 	partitionSession *PartitionSession
 }
 
-func (c CommitRange) GetCommitOffset() CommitRange {
+func (c commitRange) GetCommitOffset() commitRange {
 	return c
 }
 
-func (c CommitRange) session() *PartitionSession {
+func (c commitRange) session() *PartitionSession {
 	return c.partitionSession
 }
 

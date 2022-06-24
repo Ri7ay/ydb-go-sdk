@@ -78,7 +78,7 @@ func (r *readerReconnector) ReadMessageBatch(ctx context.Context, opts readMessa
 	}
 }
 
-func (r *readerReconnector) Commit(ctx context.Context, commitRange CommitRange) error {
+func (r *readerReconnector) Commit(ctx context.Context, commitRange commitRange) error {
 	stream, err := r.stream(ctx)
 	if err != nil {
 		return err

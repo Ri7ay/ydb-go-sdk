@@ -7,10 +7,10 @@ import (
 )
 
 type CommitableByOffset interface { // Интерфейс, который можно коммитить по оффсету
-	GetCommitOffset() CommitRange
+	GetCommitOffset() commitRange
 }
 
-type CommitBatch []CommitRange
+type CommitBatch []commitRange
 
 func CommitBatchFromMessages(messages ...Message) CommitBatch {
 	var res CommitBatch
@@ -49,13 +49,13 @@ func (b CommitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffse
 	return commitsToRawPartitionCommitOffset(commits)
 }
 
-func compressCommits(commitsOrig []CommitRange) []CommitRange {
+func compressCommits(commitsOrig []commitRange) []commitRange {
 	if len(commitsOrig) == 0 {
 		return nil
 	}
 
 	// prevent broke argument
-	sortedCommits := make([]CommitRange, len(commitsOrig))
+	sortedCommits := make([]commitRange, len(commitsOrig))
 	copy(sortedCommits, commitsOrig)
 
 	sort.Slice(sortedCommits, func(i, j int) bool {
@@ -87,7 +87,7 @@ func compressCommits(commitsOrig []CommitRange) []CommitRange {
 	return newCommits
 }
 
-func commitsToRawPartitionCommitOffset(commits []CommitRange) []rawtopicreader.PartitionCommitOffset {
+func commitsToRawPartitionCommitOffset(commits []commitRange) []rawtopicreader.PartitionCommitOffset {
 	if len(commits) == 0 {
 		return nil
 	}

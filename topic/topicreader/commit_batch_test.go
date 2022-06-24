@@ -13,8 +13,8 @@ func TestCompressCommitsInplace(t *testing.T) {
 	session2 := &PartitionSession{partitionSessionID: 2}
 	table := []struct {
 		name     string
-		source   []CommitRange
-		expected []CommitRange
+		source   []commitRange
+		expected []commitRange
 	}{
 		{
 			name:     "Empty",
@@ -23,14 +23,14 @@ func TestCompressCommitsInplace(t *testing.T) {
 		},
 		{
 			name: "OneCommit",
-			source: []CommitRange{
+			source: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        2,
 					partitionSession: session1,
 				},
 			},
-			expected: []CommitRange{
+			expected: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        2,
@@ -40,7 +40,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 		},
 		{
 			name: "CompressedToOne",
-			source: []CommitRange{
+			source: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        2,
@@ -57,7 +57,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 					partitionSession: session1,
 				},
 			},
-			expected: []CommitRange{
+			expected: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        10,
@@ -67,7 +67,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 		},
 		{
 			name: "CompressedUnordered",
-			source: []CommitRange{
+			source: []commitRange{
 				{
 					Offset:           5,
 					EndOffset:        10,
@@ -84,7 +84,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 					partitionSession: session1,
 				},
 			},
-			expected: []CommitRange{
+			expected: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        10,
@@ -94,7 +94,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 		},
 		{
 			name: "CompressDifferentSessionsSeparated",
-			source: []CommitRange{
+			source: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        2,
@@ -106,7 +106,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 					partitionSession: session2,
 				},
 			},
-			expected: []CommitRange{
+			expected: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        2,
@@ -121,7 +121,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 		},
 		{
 			name: "CompressTwoSessions",
-			source: []CommitRange{
+			source: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        1,
@@ -143,7 +143,7 @@ func TestCompressCommitsInplace(t *testing.T) {
 					partitionSession: session2,
 				},
 			},
-			expected: []CommitRange{
+			expected: []commitRange{
 				{
 					Offset:           1,
 					EndOffset:        3,
@@ -159,9 +159,9 @@ func TestCompressCommitsInplace(t *testing.T) {
 	}
 	for _, test := range table {
 		t.Run(test.name, func(t *testing.T) {
-			var src []CommitRange
+			var src []commitRange
 			if test.source != nil {
-				src = make([]CommitRange, len(test.source))
+				src = make([]commitRange, len(test.source))
 				copy(src, test.source)
 			}
 
@@ -178,7 +178,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 
 	table := []struct {
 		name     string
-		source   []CommitRange
+		source   []commitRange
 		expected []rawtopicreader.PartitionCommitOffset
 	}{
 		{
@@ -188,7 +188,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "OneCommit",
-			source: []CommitRange{
+			source: []commitRange{
 				{Offset: 1, EndOffset: 2, partitionSession: session1},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
@@ -202,7 +202,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "NeighboursWithOneSession",
-			source: []CommitRange{
+			source: []commitRange{
 				{Offset: 1, EndOffset: 2, partitionSession: session1},
 				{Offset: 10, EndOffset: 20, partitionSession: session1},
 				{Offset: 30, EndOffset: 40, partitionSession: session1},
@@ -220,7 +220,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "TwoSessionsSameOffsets",
-			source: []CommitRange{
+			source: []commitRange{
 				{Offset: 1, EndOffset: 2, partitionSession: session1},
 				{Offset: 10, EndOffset: 20, partitionSession: session1},
 				{Offset: 1, EndOffset: 2, partitionSession: session2},
@@ -245,7 +245,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		},
 		{
 			name: "TwoSessionsWithDifferenceOffsets",
-			source: []CommitRange{
+			source: []commitRange{
 				{Offset: 1, EndOffset: 2, partitionSession: session1},
 				{Offset: 10, EndOffset: 20, partitionSession: session1},
 				{Offset: 1, EndOffset: 2, partitionSession: session2},

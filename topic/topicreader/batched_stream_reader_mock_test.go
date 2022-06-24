@@ -46,7 +46,7 @@ func (mr *MockbatchedStreamReaderMockRecorder) Close(ctx, err interface{}) *gomo
 }
 
 // Commit mocks base method.
-func (m *MockbatchedStreamReader) Commit(ctx context.Context, commitRange CommitRange) error {
+func (m *MockbatchedStreamReader) Commit(ctx context.Context, commitRange commitRange) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Commit", ctx, commitRange)
 	ret0, _ := ret[0].(error)

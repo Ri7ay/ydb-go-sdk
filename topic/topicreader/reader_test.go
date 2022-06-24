@@ -102,15 +102,15 @@ func TestReader_Commit(t *testing.T) {
 	baseReader := NewMockbatchedStreamReader(mc)
 	reader := &Reader{reader: baseReader}
 
-	expectedRangeOk := CommitRange{
+	expectedRangeOk := commitRange{
 		Offset:           1,
 		EndOffset:        10,
 		partitionSession: &PartitionSession{partitionSessionID: 10},
 	}
 	baseReader.EXPECT().Commit(gomock.Any(), expectedRangeOk).Return(nil)
-	require.NoError(t, reader.Commit(context.Background(), Message{CommitRange: expectedRangeOk}))
+	require.NoError(t, reader.Commit(context.Background(), Message{commitRange: expectedRangeOk}))
 
-	expectedRangeErr := CommitRange{
+	expectedRangeErr := commitRange{
 		Offset:           15,
 		EndOffset:        20,
 		partitionSession: &PartitionSession{partitionSessionID: 30},
@@ -118,5 +118,5 @@ func TestReader_Commit(t *testing.T) {
 
 	testErr := errors.New("test err")
 	baseReader.EXPECT().Commit(gomock.Any(), expectedRangeErr).Return(testErr)
-	require.ErrorIs(t, reader.Commit(context.Background(), Message{CommitRange: expectedRangeErr}), testErr)
+	require.ErrorIs(t, reader.Commit(context.Background(), Message{commitRange: expectedRangeErr}), testErr)
 }
