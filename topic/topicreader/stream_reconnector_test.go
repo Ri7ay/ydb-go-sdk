@@ -190,8 +190,8 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		reconnector := &readerReconnector{}
 		reconnector.initChannels()
 
-		stream1Ready := make(chan struct{})
-		stream2Ready := make(chan struct{})
+		stream1Ready := make(emptyChan)
+		stream2Ready := make(emptyChan)
 		reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
 			{
 				callback: func(ctx context.Context) (batchedStreamReader, error) {
@@ -253,7 +253,7 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	connectionRequested := make(chan struct{})
+	connectionRequested := make(emptyChan)
 	reconnector.readerConnect = readerConnectFuncMock([]readerConnectFuncAnswer{
 		{callback: func(ctx context.Context) (batchedStreamReader, error) {
 			close(connectionRequested)

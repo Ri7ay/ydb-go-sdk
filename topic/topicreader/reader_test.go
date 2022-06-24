@@ -39,7 +39,7 @@ func TestReader_Close(t *testing.T) {
 	}
 
 	type callState struct {
-		callCompleted chan struct{}
+		callCompleted emptyChan
 		err           error
 	}
 
@@ -55,7 +55,7 @@ func TestReader_Close(t *testing.T) {
 	var allStates []*callState
 	newCallState := func() *callState {
 		state := &callState{
-			callCompleted: make(chan struct{}),
+			callCompleted: make(emptyChan),
 		}
 		allStates = append(allStates, state)
 		return state

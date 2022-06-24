@@ -52,8 +52,8 @@ func (m *Message) Topic() string {
 }
 
 var (
-	_ CommitableByOffset = Message{}
-	_ CommitableByOffset = commitRange{}
+	_ committedBySingleRange = Message{}
+	_ committedBySingleRange = commitRange{}
 )
 
 type commitRange struct {
@@ -63,7 +63,7 @@ type commitRange struct {
 	partitionSession *PartitionSession
 }
 
-func (c commitRange) GetCommitOffset() commitRange {
+func (c commitRange) getCommitRange() commitRange {
 	return c
 }
 
@@ -71,7 +71,7 @@ func (c commitRange) session() *PartitionSession {
 	return c.partitionSession
 }
 
-var _ CommitableByOffset = &Batch{}
+var _ committedBySingleRange = &Batch{}
 
 func createReader(codec rawtopic.Codec, rawBytes []byte) io.Reader {
 	switch codec {

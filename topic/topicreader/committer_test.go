@@ -15,8 +15,6 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
-type emptyChan chan struct{}
-
 func TestCommitterCommit(t *testing.T) {
 	t.Run("CommitWithCancelledContext", func(t *testing.T) {
 		ctx := testContext(t)
@@ -56,14 +54,14 @@ func TestCommitterCommitAsync(t *testing.T) {
 			partitionSession: session,
 		}
 
-		sendCalled := make(chan bool)
+		sendCalled := make(emptyChan)
 		c := newTestCommitter(ctx, t)
 		c.mode = CommitModeAsync
 		c.send = func(mess rawtopicreader.ClientMessage) error {
 			close(sendCalled)
 			require.Equal(t,
 				&rawtopicreader.CommitOffsetRequest{
-					CommitOffsets: CommitBatch{commitRange}.toPartitionsOffsets(),
+					CommitOffsets: commitBatch{commitRange}.toPartitionsOffsets(),
 				},
 				mess)
 			return nil
@@ -94,7 +92,7 @@ func TestCommitterCommitSync(t *testing.T) {
 			sendCalled = true
 			require.Equal(t,
 				&rawtopicreader.CommitOffsetRequest{
-					CommitOffsets: CommitBatch{commitRange}.toPartitionsOffsets(),
+					CommitOffsets: commitBatch{commitRange}.toPartitionsOffsets(),
 				},
 				mess)
 			c.OnCommitNotify(session, commitRange.EndOffset)

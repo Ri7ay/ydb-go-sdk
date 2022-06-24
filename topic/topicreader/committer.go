@@ -27,7 +27,7 @@ type committer struct {
 	mode CommitMode
 
 	clock            clockwork.Clock
-	commitLoopSignal chan struct{}
+	commitLoopSignal emptyChan
 	backgroundWorker backgroundworkers.BackgroundWorker
 
 	m       xsync.Mutex
@@ -48,7 +48,7 @@ func newCommitter(lifeContext context.Context, mode CommitMode, send sendMessage
 }
 
 func (c *committer) initChannels() {
-	c.commitLoopSignal = make(chan struct{}, 1)
+	c.commitLoopSignal = make(emptyChan, 1)
 }
 
 func (c *committer) start() {
@@ -102,7 +102,7 @@ func (c *committer) pushCommitsLoop(ctx context.Context) {
 	for {
 		c.waitSendTrigger(ctx)
 
-		var commits CommitBatch
+		var commits commitBatch
 		c.m.WithLock(func() {
 			commits = c.commits
 			c.commits = make([]commitRange, 0, len(commits))
@@ -227,7 +227,7 @@ type commitWaiter struct {
 	ID        int64
 	Session   *PartitionSession
 	EndOffset rawtopicreader.Offset
-	Committed chan struct{}
+	Committed emptyChan
 }
 
 func (w *commitWaiter) checkCondition(session *PartitionSession, offset rawtopicreader.Offset) (finished bool) {
@@ -242,11 +242,11 @@ func newCommitWaiter(session *PartitionSession, endOffset rawtopicreader.Offset)
 		ID:        id,
 		Session:   session,
 		EndOffset: endOffset,
-		Committed: make(chan struct{}, 1),
+		Committed: make(emptyChan, 1),
 	}
 }
 
-func sendCommitMessage(send sendMessageToServerFunc, batch CommitBatch) error {
+func sendCommitMessage(send sendMessageToServerFunc, batch commitBatch) error {
 	req := &rawtopicreader.CommitOffsetRequest{
 		CommitOffsets: batch.toPartitionsOffsets(),
 	}

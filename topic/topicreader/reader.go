@@ -134,8 +134,8 @@ func (r *Reader) ReadMessage(ctx context.Context) (Message, error) {
 	return res.Messages[0], nil
 }
 
-func (r *Reader) Commit(ctx context.Context, offset CommitableByOffset) error {
-	return r.reader.Commit(ctx, offset.GetCommitOffset())
+func (r *Reader) Commit(ctx context.Context, offset committedBySingleRange) error {
+	return r.reader.Commit(ctx, offset.getCommitRange())
 }
 
 type readerConfig struct {

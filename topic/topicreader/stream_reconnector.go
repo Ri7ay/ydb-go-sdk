@@ -32,7 +32,7 @@ type readerReconnector struct {
 	closeOnce sync.Once
 
 	m                          xsync.RWMutex
-	streamConnectionInProgress chan struct{} // opened if connection in progress, closed if connection established
+	streamConnectionInProgress emptyChan // opened if connection in progress, closed if connection established
 	streamVal                  batchedStreamReader
 	streamErr                  error
 	closedErr                  error
@@ -112,7 +112,7 @@ func (r *readerReconnector) start() {
 
 func (r *readerReconnector) initChannels() {
 	r.reconnectFromBadStream = make(chan batchedStreamReader, 1)
-	r.streamConnectionInProgress = make(chan struct{})
+	r.streamConnectionInProgress = make(emptyChan)
 	close(r.streamConnectionInProgress) // no progress at start
 }
 
@@ -141,7 +141,7 @@ func (r *readerReconnector) reconnect(ctx context.Context, oldReader batchedStre
 		return
 	}
 
-	connectionInProgress := make(chan struct{})
+	connectionInProgress := make(emptyChan)
 	defer close(connectionInProgress)
 
 	r.m.WithLock(func() {
@@ -183,7 +183,7 @@ func (r *readerReconnector) fireReconnectOnRetryableError(stream batchedStreamRe
 
 func (r *readerReconnector) stream(ctx context.Context) (batchedStreamReader, error) {
 	var err error
-	var connectionChan chan struct{}
+	var connectionChan emptyChan
 	r.m.WithRLock(func() {
 		connectionChan = r.streamConnectionInProgress
 		if r.closedErr != nil {

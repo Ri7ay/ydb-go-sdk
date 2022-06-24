@@ -33,6 +33,26 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 	lastOffset := e.partitionSession.lastReceivedMessageOffset()
 	const dataSize = 4
 
+	// request new data portion
+	e.stream.EXPECT().Send(&rawtopicreader.ReadRequest{BytesSize: dataSize * 2})
+
+	// Expect commit message with stole
+	e.stream.EXPECT().Send(
+		&rawtopicreader.CommitOffsetRequest{
+			CommitOffsets: []rawtopicreader.PartitionCommitOffset{
+				{
+					PartitionSessionID: e.partitionSessionID,
+					Offsets: []rawtopicreader.OffsetRange{
+						{
+							Start: lastOffset + 1,
+							End:   lastOffset + 16,
+						},
+					},
+				},
+			},
+		},
+	)
+
 	// send message with stole offsets
 	//
 	e.SendFromServer(&rawtopicreader.ReadResponse{
@@ -54,30 +74,32 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 			},
 		},
 	})
-
-	// request new data portion
-	e.stream.EXPECT().Send(&rawtopicreader.ReadRequest{BytesSize: dataSize})
-
-	// Expect commit message with stole
-	e.stream.EXPECT().Send(
-		&rawtopicreader.CommitOffsetRequest{
-			CommitOffsets: []rawtopicreader.PartitionCommitOffset{
-				{
-					PartitionSessionID: e.partitionSessionID,
-					Offsets: []rawtopicreader.OffsetRange{
-						{
-							Start: lastOffset + 1,
-							End:   lastOffset + 11,
+	e.SendFromServer(&rawtopicreader.ReadResponse{
+		BytesSize: dataSize,
+		PartitionData: []rawtopicreader.PartitionData{
+			{
+				PartitionSessionID: e.partitionSessionID,
+				Batches: []rawtopicreader.Batch{
+					{
+						Codec:          rawtopic.CodecRaw,
+						MessageGroupID: "1",
+						MessageData: []rawtopicreader.MessageData{
+							{
+								Offset: lastOffset + 15,
+							},
 						},
 					},
 				},
 			},
 		},
-	)
+	})
 
-	batch, err := e.reader.ReadMessageBatch(e.ctx, newReadMessageBatchOptions())
+	opts := newReadMessageBatchOptions()
+	opts.MinCount = 2
+	batch, err := e.reader.ReadMessageBatch(e.ctx, opts)
+	_ = batch
 	require.NoError(t, err)
-	require.NoError(t, e.reader.Commit(e.ctx, batch.GetCommitOffset()))
+	require.NoError(t, e.reader.Commit(e.ctx, batch.getCommitRange()))
 }
 
 func TestTopicStreamReaderImpl_Create(t *testing.T) {

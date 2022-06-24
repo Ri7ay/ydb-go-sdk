@@ -6,41 +6,41 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
-type CommitableByOffset interface { // Интерфейс, который можно коммитить по оффсету
-	GetCommitOffset() commitRange
+type committedBySingleRange interface { // Интерфейс, который можно коммитить по оффсету
+	getCommitRange() commitRange
 }
 
-type CommitBatch []commitRange
+type commitBatch []commitRange
 
-func CommitBatchFromMessages(messages ...Message) CommitBatch {
-	var res CommitBatch
+func CommitBatchFromMessages(messages ...Message) commitBatch {
+	var res commitBatch
 	res.AppendMessages(messages...)
 	return res
 }
 
-func CommitBatchFromCommitableByOffset(commitable ...CommitableByOffset) CommitBatch {
-	var res CommitBatch
+func CommitBatchFromCommitableByOffset(commitable ...committedBySingleRange) commitBatch {
+	var res commitBatch
 	res.Append(commitable...)
 	return res
 }
 
-func (b *CommitBatch) Append(messages ...CommitableByOffset) {
+func (b *commitBatch) Append(messages ...committedBySingleRange) {
 	for i := range messages {
-		*b = append(*b, messages[i].GetCommitOffset())
+		*b = append(*b, messages[i].getCommitRange())
 	}
 }
 
-func (b *CommitBatch) AppendMessages(messages ...Message) {
+func (b *commitBatch) AppendMessages(messages ...Message) {
 	for i := range messages {
-		*b = append(*b, messages[i].GetCommitOffset())
+		*b = append(*b, messages[i].getCommitRange())
 	}
 }
 
-func (b *CommitBatch) compress() CommitBatch {
+func (b *commitBatch) compress() commitBatch {
 	return compressCommits(*b)
 }
 
-func (b CommitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffset {
+func (b commitBatch) toPartitionsOffsets() []rawtopicreader.PartitionCommitOffset {
 	if len(b) == 0 {
 		return nil
 	}

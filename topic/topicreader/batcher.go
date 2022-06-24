@@ -168,9 +168,10 @@ func (b *batcher) Pop(ctx context.Context, opts batcherGetOptions) (_ batcherMes
 
 func (b *batcher) createWaiter(opts batcherGetOptions) batcherWaiter {
 	waiter := batcherWaiter{
-		ID:      atomic.AddInt64(&b.waiterId, 1),
-		Options: opts,
-		Result:  make(chan batcherMessageOrderItem),
+		ID:               atomic.AddInt64(&b.waiterId, 1),
+		Options:          opts,
+		Result:           make(chan batcherMessageOrderItem),
+		FinishWaitSignal: make(emptyChan),
 	}
 
 	b.m.WithLock(func() {
@@ -186,6 +187,7 @@ func (b *batcher) removeWaiterByID(waiterID int64) error {
 
 	for i := 0; i < len(b.waiters); i++ {
 		if b.waiters[i].ID == waiterID {
+			close(b.waiters[i].FinishWaitSignal)
 			b.removeWaiterByIndexNeedLock(i)
 			return nil
 		}
@@ -209,19 +211,15 @@ func (b *batcher) fireWaitersNeedLock() {
 			// waiter receive the result, commit it
 			b.applyNeedLock(resCandidate)
 			return
-		default:
+		case <-waiter.FinishWaitSignal:
 			startIndex = resCandidate.WaiterIndex + 1
 		}
 	}
 }
 
-func (b *batcher) removeWaiterByIndexNeedLock(index int) batcherWaiter {
-	waiter := b.waiters[index]
-
+func (b *batcher) removeWaiterByIndexNeedLock(index int) {
 	copy(b.waiters[index:], b.waiters[index+1:])
 	b.waiters = b.waiters[:len(b.waiters)-1]
-
-	return waiter
 }
 
 type batcherResultCandidate struct {
@@ -331,7 +329,8 @@ type batcherMessageOrderItem struct {
 }
 
 type batcherWaiter struct {
-	ID      int64
-	Options batcherGetOptions
-	Result  chan batcherMessageOrderItem
+	ID               int64
+	Options          batcherGetOptions
+	Result           chan batcherMessageOrderItem
+	FinishWaitSignal emptyChan
 }
