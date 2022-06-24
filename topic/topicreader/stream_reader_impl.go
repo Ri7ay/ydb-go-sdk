@@ -18,7 +18,10 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 )
 
-var ErrPartitionStopped = xerrors.Wrap(errors.New("ydb: pq partition stopped"))
+var (
+	ErrPartitionStopped = errors.New("ydb: pq partition stopped")
+	ErrUnsupportedCodec = errors.New("ydb: unsupported codec")
+)
 
 type partitionSessionID = rawtopicreader.PartitionSessionID
 
@@ -484,7 +487,7 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 				return r.ctx.Err()
 			}
 
-			batch, err := NewBatchFromStream(session, p.Batches[bIndex])
+			batch, err := newBatchFromStream(session, p.Batches[bIndex])
 			if err != nil {
 				return err
 			}

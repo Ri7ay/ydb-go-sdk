@@ -12,8 +12,6 @@ type Batch struct {
 	Messages []Message
 
 	commitRange // от всех сообщений батча
-
-	partitionSession *PartitionSession
 }
 
 func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
@@ -46,9 +44,8 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 	}
 
 	return Batch{
-		partitionSession: session,
-		Messages:         messages,
-		commitRange:      offset,
+		Messages:    messages,
+		commitRange: offset,
 	}, nil
 }
 
@@ -58,20 +55,22 @@ func newBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 	for i := range sb.MessageData {
 		sMess := &sb.MessageData[i]
 
-		cMess := &messages[i]
-		cMess.commitRange.partitionSession = session
-		cMess.MessageOffset = sMess.Offset.ToInt64()
-		cMess.commitRange.Offset = prevOffset + 1
-		cMess.commitRange.EndOffset = sMess.Offset + 1
+		dstMess := &messages[i]
+		dstMess.commitRange.partitionSession = session
+		dstMess.MessageOffset = sMess.Offset.ToInt64()
+		dstMess.commitRange.Offset = prevOffset + 1
+		dstMess.commitRange.EndOffset = sMess.Offset + 1
+		dstMess.WrittenAt = sb.WrittenAt
+		dstMess.WriteSessionMetadata = sb.WriteSessionMeta
+
+		dstMessData := &dstMess.MessageData
+		dstMessData.SeqNo = sMess.SeqNo
+		dstMessData.CreatedAt = sMess.CreatedAt
+		dstMessData.MessageGroupID = sMess.MessageGroupID
+		dstMessData.rawDataLen = len(sMess.Data)
+		dstMessData.Data = createReader(sb.Codec, sMess.Data)
+
 		prevOffset = sMess.Offset
-
-		messData := &cMess.MessageData
-		messData.SeqNo = sMess.SeqNo
-		messData.CreatedAt = sMess.CreatedAt
-		messData.MessageGroupID = sMess.MessageGroupID
-
-		messData.rawDataLen = len(sMess.Data)
-		messData.Data = createReader(sb.Codec, sMess.Data)
 	}
 
 	session.setLastReceivedMessageOffset(prevOffset)

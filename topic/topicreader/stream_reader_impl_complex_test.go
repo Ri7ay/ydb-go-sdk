@@ -1,9 +1,12 @@
 package topicreader
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"runtime/pprof"
 	"testing"
 	"time"
@@ -206,6 +209,174 @@ func TestStreamReaderImpl_OnPartitionCloseHandle(t *testing.T) {
 	})
 }
 
+func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
+	e := newTopicReaderTestEnv(t)
+	e.Start()
+
+	compress := func(mess string) []byte {
+		b := &bytes.Buffer{}
+		writer := gzip.NewWriter(b)
+		_, err := writer.Write([]byte(mess))
+		require.NoError(t, writer.Close())
+		require.NoError(t, err)
+		return b.Bytes()
+	}
+
+	prevOffset := e.partitionSession.lastReceivedMessageOffset()
+
+	dataSize := 4
+	e.stream.EXPECT().Send(&rawtopicreader.ReadRequest{BytesSize: dataSize})
+	e.SendFromServer(&rawtopicreader.ReadResponse{
+		BytesSize: dataSize,
+		PartitionData: []rawtopicreader.PartitionData{
+			{
+				PartitionSessionID: e.partitionSessionID,
+				Batches: []rawtopicreader.Batch{
+					{
+						Codec:            rawtopic.CodecRaw,
+						WriteSessionMeta: map[string]string{"a": "b", "c": "d"},
+						WrittenAt:        testTime(5),
+						MessageData: []rawtopicreader.MessageData{
+							{
+								Offset:           prevOffset + 1,
+								SeqNo:            1,
+								CreatedAt:        testTime(1),
+								Data:             []byte("123"),
+								UncompressedSize: 3,
+								MessageGroupID:   "1",
+							},
+							{
+								Offset:           prevOffset + 2,
+								SeqNo:            2,
+								CreatedAt:        testTime(2),
+								Data:             []byte("4567"),
+								UncompressedSize: 4,
+								MessageGroupID:   "1",
+							},
+						},
+					},
+					{
+						Codec:            rawtopic.CodecGzip,
+						WriteSessionMeta: map[string]string{"e": "f", "g": "h"},
+						WrittenAt:        testTime(6),
+						MessageData: []rawtopicreader.MessageData{
+							{
+								Offset:           prevOffset + 10,
+								SeqNo:            3,
+								CreatedAt:        testTime(3),
+								Data:             compress("098"),
+								UncompressedSize: 3,
+								MessageGroupID:   "2",
+							},
+							{
+								Offset:           prevOffset + 20,
+								SeqNo:            4,
+								CreatedAt:        testTime(4),
+								Data:             compress("0987"),
+								UncompressedSize: 4,
+								MessageGroupID:   "2",
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+	)
+
+	expectedData := [][]byte{[]byte("123"), []byte("4567"), []byte("098"), []byte("0987")}
+	expectedBatch := Batch{
+		commitRange: commitRange{
+			Offset:           prevOffset + 1,
+			EndOffset:        prevOffset + 21,
+			partitionSession: e.partitionSession,
+		},
+		Messages: []Message{
+			{
+				MessageData: MessageData{
+					SeqNo:          1,
+					CreatedAt:      testTime(1),
+					MessageGroupID: "1",
+					rawDataLen:     3,
+				},
+				commitRange: commitRange{
+					Offset:           prevOffset + 1,
+					EndOffset:        prevOffset + 2,
+					partitionSession: e.partitionSession,
+				},
+				MessageOffset:        prevOffset.ToInt64() + 1,
+				WrittenAt:            testTime(5),
+				WriteSessionMetadata: map[string]string{"a": "b", "c": "d"},
+			},
+			{
+				MessageData: MessageData{
+					SeqNo:          2,
+					CreatedAt:      testTime(2),
+					MessageGroupID: "1",
+					rawDataLen:     4,
+				},
+				commitRange: commitRange{
+					Offset:           prevOffset + 2,
+					EndOffset:        prevOffset + 3,
+					partitionSession: e.partitionSession,
+				},
+				MessageOffset:        prevOffset.ToInt64() + 2,
+				WrittenAt:            testTime(5),
+				WriteSessionMetadata: map[string]string{"a": "b", "c": "d"},
+			},
+			{
+				MessageData: MessageData{
+					SeqNo:          3,
+					CreatedAt:      testTime(3),
+					MessageGroupID: "2",
+					rawDataLen:     len(compress("098")),
+				},
+				commitRange: commitRange{
+					Offset:           prevOffset + 3,
+					EndOffset:        prevOffset + 11,
+					partitionSession: e.partitionSession,
+				},
+				MessageOffset:        prevOffset.ToInt64() + 10,
+				WrittenAt:            testTime(6),
+				WriteSessionMetadata: map[string]string{"e": "f", "g": "h"},
+			},
+			{
+				MessageData: MessageData{
+					SeqNo:          4,
+					CreatedAt:      testTime(4),
+					MessageGroupID: "2",
+					rawDataLen:     len(compress("0987")),
+				},
+				commitRange: commitRange{
+					Offset:           prevOffset + 11,
+					EndOffset:        prevOffset + 21,
+					partitionSession: e.partitionSession,
+				},
+				MessageOffset:        prevOffset.ToInt64() + 20,
+				WrittenAt:            testTime(6),
+				WriteSessionMetadata: map[string]string{"e": "f", "g": "h"},
+			},
+		},
+	}
+
+	opts := newReadMessageBatchOptions()
+	opts.MinCount = 4
+	batch, err := e.reader.ReadMessageBatch(e.ctx, opts)
+	require.NoError(t, err)
+
+	var data [][]byte
+	for i := range batch.Messages {
+		content, err := ioutil.ReadAll(batch.Messages[i].Data)
+		require.NoError(t, err)
+		data = append(data, content)
+		batch.Messages[i].Data = nil
+		batch.Messages[i].bufferBytesAccount = 0
+	}
+
+	require.Equal(t, expectedData, data)
+	require.Equal(t, expectedBatch, batch)
+}
+
 type streamEnv struct {
 	ctx                context.Context
 	t                  testing.TB
@@ -261,6 +432,7 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 	}
 
 	stream.EXPECT().Recv().AnyTimes().DoAndReturn(env.receiveMessageHandler)
+	stream.EXPECT().Send(&rawtopicreader.ReadRequest{BytesSize: 0}).AnyTimes() // allow in test send data without explicit sizes
 	stream.EXPECT().CloseSend().Return(nil)
 
 	t.Cleanup(func() {

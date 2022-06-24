@@ -27,9 +27,9 @@ type SizeReader interface {
 }
 
 type MessageData struct { // Данные для записи. Так же эмбедятся в чтение
-	SeqNo     int64
-	CreatedAt time.Time
-	WrittenAt time.Time
+	SeqNo          int64
+	CreatedAt      time.Time
+	MessageGroupID string
 
 	Data               io.Reader
 	rawDataLen         int
@@ -40,7 +40,9 @@ type Message struct {
 	MessageData
 	commitRange
 
-	WrittenAt time.Time
+	WriteSessionMetadata map[string]string
+	MessageOffset        int64
+	WrittenAt            time.Time
 }
 
 func (m *Message) Context() context.Context {
@@ -51,10 +53,7 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-var (
-	_ committedBySingleRange = Message{}
-	_ committedBySingleRange = commitRange{}
-)
+var _ committedBySingleRange = Message{}
 
 type commitRange struct {
 	Offset    rawtopicreader.Offset
@@ -89,7 +88,9 @@ func createReader(codec rawtopic.Codec, rawBytes []byte) io.Reader {
 		_ = contentS
 		return gzipReader
 	default:
-		return errorReader{err: xerrors.WithStackTrace(fmt.Errorf("received message with codec '%v': %w", codec, ErrUnexpectedCodec))}
+		return errorReader{
+			err: xerrors.WithStackTrace(fmt.Errorf("received message with codec '%v': %w", codec, ErrUnexpectedCodec)),
+		}
 	}
 }
 

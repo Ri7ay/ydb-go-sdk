@@ -20,9 +20,8 @@ func TestBatch_New(t *testing.T) {
 		require.NoError(t, err)
 
 		expected := Batch{
-			Messages:         []Message{m1, m2},
-			commitRange:      commitRange{Offset: 1, EndOffset: 3, partitionSession: session},
-			partitionSession: session,
+			Messages:    []Message{m1, m2},
+			commitRange: commitRange{Offset: 1, EndOffset: 3, partitionSession: session},
 		}
 		require.Equal(t, expected, batch)
 	})
@@ -65,31 +64,28 @@ func TestBatch_Extend(t *testing.T) {
 		session := &PartitionSession{}
 		m1 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 1, time.UTC),
-			commitRange: commitRange{Offset: 10, EndOffset: 11},
+			commitRange: commitRange{Offset: 10, EndOffset: 11, partitionSession: session},
 		}
 		m2 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 2, time.UTC),
-			commitRange: commitRange{Offset: 11, EndOffset: 12},
+			commitRange: commitRange{Offset: 11, EndOffset: 12, partitionSession: session},
 		}
 
 		b1 := Batch{
-			Messages:         []Message{m1},
-			commitRange:      m1.commitRange,
-			partitionSession: session,
+			Messages:    []Message{m1},
+			commitRange: m1.commitRange,
 		}
 
 		b2 := Batch{
-			Messages:         []Message{m2},
-			commitRange:      m2.commitRange,
-			partitionSession: session,
+			Messages:    []Message{m2},
+			commitRange: m2.commitRange,
 		}
 		res, err := b1.append(b2)
 		require.NoError(t, err)
 
 		expected := Batch{
-			Messages:         []Message{m1, m2},
-			commitRange:      commitRange{Offset: 10, EndOffset: 12},
-			partitionSession: session,
+			Messages:    []Message{m1, m2},
+			commitRange: commitRange{Offset: 10, EndOffset: 12, partitionSession: session},
 		}
 		require.Equal(t, expected, res)
 	})
@@ -118,27 +114,26 @@ func TestBatch_Extend(t *testing.T) {
 		require.Equal(t, Batch{}, res)
 	})
 	t.Run("BadSession", func(t *testing.T) {
+		session1 := &PartitionSession{}
+		session2 := &PartitionSession{}
+
 		m1 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 1, time.UTC),
-			commitRange: commitRange{Offset: 10, EndOffset: 11},
+			commitRange: commitRange{Offset: 10, EndOffset: 11, partitionSession: session1},
 		}
 		m2 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 2, time.UTC),
-			commitRange: commitRange{Offset: 11, EndOffset: 12},
+			commitRange: commitRange{Offset: 11, EndOffset: 12, partitionSession: session2},
 		}
 
-		session1 := &PartitionSession{}
-		session2 := &PartitionSession{}
 		b1 := Batch{
-			Messages:         []Message{m1},
-			commitRange:      m1.commitRange,
-			partitionSession: session1,
+			Messages:    []Message{m1},
+			commitRange: m1.commitRange,
 		}
 
 		b2 := Batch{
-			Messages:         []Message{m2},
-			commitRange:      m2.commitRange,
-			partitionSession: session2,
+			Messages:    []Message{m2},
+			commitRange: m2.commitRange,
 		}
 		res, err := b1.append(b2)
 		require.Error(t, err)

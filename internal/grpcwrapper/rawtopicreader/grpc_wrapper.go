@@ -345,8 +345,7 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_
 				dstMess.CreatedAt = time.UnixMilli(srcMess.CreateTimestampMs)
 				dstMess.Data = srcMess.Data
 				dstMess.UncompressedSize = srcMess.UncompressedSize
-				dstMess.PartitionKey = srcMess.PartitionKey
-				dstMess.ExplicitHash = srcMess.ExplicitHash
+				// TODO: dstMess.MessageGroupID
 				dstBatch.Codec.FromProto(srcMess.Codec) // TODO: move to batch level
 			}
 		}
@@ -375,9 +374,7 @@ type MessageData struct {
 	CreatedAt        time.Time
 	Data             []byte
 	UncompressedSize int64
-
-	PartitionKey string
-	ExplicitHash []byte
+	MessageGroupID   string
 }
 
 //
