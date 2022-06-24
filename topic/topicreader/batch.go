@@ -52,33 +52,29 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 	}, nil
 }
 
-func NewBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Batch, error) {
+func newBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Batch, error) {
 	messages := make([]Message, len(sb.MessageData))
-
+	prevOffset := session.lastReceivedMessageOffset()
 	for i := range sb.MessageData {
 		sMess := &sb.MessageData[i]
 
 		cMess := &messages[i]
 		cMess.commitRange.partitionSession = session
-		cMess.Offset = sMess.Offset
-		cMess.EndOffset = sMess.Offset + 1
-
-		if i == 0 {
-			// auto commit received holes
-			cMess.Offset = session.lastReceivedMessageOffset() + 1
-		}
+		cMess.MessageOffset = sMess.Offset.ToInt64()
+		cMess.commitRange.Offset = prevOffset + 1
+		cMess.commitRange.EndOffset = sMess.Offset + 1
+		prevOffset = sMess.Offset
 
 		messData := &cMess.MessageData
 		messData.SeqNo = sMess.SeqNo
 		messData.CreatedAt = sMess.CreatedAt
+		messData.MessageGroupID = sMess.MessageGroupID
+
 		messData.rawDataLen = len(sMess.Data)
 		messData.Data = createReader(sb.Codec, sMess.Data)
-		messData.WrittenAt = sb.WrittenAt
 	}
 
-	if len(sb.MessageData) > 0 {
-		session.setLastReceivedMessageOffset(sb.MessageData[len(sb.MessageData)-1].Offset)
-	}
+	session.setLastReceivedMessageOffset(prevOffset)
 
 	return newBatch(session, messages)
 }
@@ -125,36 +121,50 @@ func (m Batch) isEmpty() bool {
 	return len(m.Messages) == 0
 }
 
-func splitBytesByMessagesInBatches(batches []Batch, bytesCount int) error {
-	if bytesCount == 0 {
-		return nil
+func splitBytesByMessagesInBatches(batches []Batch, totalBytesCount int) error {
+	restBytes := totalBytesCount
+
+	cutBytes := func(want int) int {
+		switch {
+		case restBytes == 0:
+			return 0
+		case want >= restBytes:
+			res := restBytes
+			restBytes = 0
+			return res
+		default:
+			restBytes -= want
+			return want
+		}
 	}
 
-	messageSumSizes := 0
 	messagesCount := 0
 	for batchIndex := range batches {
 		messagesCount += len(batches[batchIndex].Messages)
 		for messageIndex := range batches[batchIndex].Messages {
-			messageSumSizes += batches[batchIndex].Messages[messageIndex].rawDataLen
+			message := &batches[batchIndex].Messages[messageIndex]
+			message.bufferBytesAccount = cutBytes(batches[batchIndex].Messages[messageIndex].rawDataLen)
 		}
 	}
 
 	if messagesCount == 0 {
+		if totalBytesCount == 0 {
+			return nil
+		}
+
 		return xerrors.NewWithIssues("ydb: can't split bytes to zero length messages count")
 	}
 
-	overheadBytes := bytesCount - messageSumSizes
-	overheadPerMessage := overheadBytes / messagesCount
-	overheadRemind := overheadBytes % messagesCount
+	overheadPerMessage := restBytes / messagesCount
+	overheadRemind := restBytes % messagesCount
 
 	for batchIndex := range batches {
 		for messageIndex := range batches[batchIndex].Messages {
 			mess := &batches[batchIndex].Messages[messageIndex]
 
-			mess.bufferBytesAccount = mess.rawDataLen + overheadPerMessage
+			mess.bufferBytesAccount += cutBytes(overheadPerMessage)
 			if overheadRemind > 0 {
-				mess.bufferBytesAccount++
-				overheadRemind--
+				mess.bufferBytesAccount += cutBytes(1)
 			}
 		}
 	}
