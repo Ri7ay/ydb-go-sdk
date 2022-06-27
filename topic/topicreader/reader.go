@@ -17,15 +17,15 @@ var (
 )
 
 //nolint:lll
-//go:generate mockgen -destination raw_stream_reader_mock_test.go -package topicreader -write_package_comment=false . RawStreamReader
+//go:generate mockgen -destination raw_topic_reader_stream_mock_test.go -package topicreader -write_package_comment=false . RawTopicReaderStream
 
-type RawStreamReader interface {
+type RawTopicReaderStream interface {
 	Recv() (rawtopicreader.ServerMessage, error)
 	Send(mess rawtopicreader.ClientMessage) error
 	CloseSend() error
 }
 
-type TopicSteamReaderConnect func(ctx context.Context) (RawStreamReader, error)
+type TopicSteamReaderConnect func(ctx context.Context) (RawTopicReaderStream, error)
 
 type Reader struct {
 	reader             batchedStreamReader

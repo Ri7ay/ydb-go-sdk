@@ -44,7 +44,7 @@ func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicre
 
 	require.NoError(t, err)
 
-	var connector topicreader.TopicSteamReaderConnect = func(ctx context.Context) (topicreader.RawStreamReader, error) {
+	var connector topicreader.TopicSteamReaderConnect = func(ctx context.Context) (topicreader.RawTopicReaderStream, error) {
 		grpcConn := db.(grpc.ClientConnInterface)
 		pqClient := Ydb_PersQueue_V12.NewPersQueueServiceClient(grpcConn)
 		grpcStream, err := pqClient.StreamingRead(context.TODO())

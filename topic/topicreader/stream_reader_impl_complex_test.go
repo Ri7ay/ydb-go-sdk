@@ -108,7 +108,7 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 func TestTopicStreamReaderImpl_Create(t *testing.T) {
 	t.Run("BadSessionInitialization", func(t *testing.T) {
 		mc := gomock.NewController(t)
-		stream := NewMockRawStreamReader(mc)
+		stream := NewMockRawTopicReaderStream(mc)
 		stream.EXPECT().Send(gomock.Any()).Return(nil)
 		stream.EXPECT().Recv().Return(&rawtopicreader.StartPartitionSessionRequest{
 			ServerMessageMetadata: rawtopicreader.ServerMessageMetadata{Status: rawydb.StatusInternalError},
@@ -374,7 +374,7 @@ type streamEnv struct {
 	t                  testing.TB
 	reader             *topicStreamReaderImpl
 	stopReadEvents     emptyChan
-	stream             *MockRawStreamReader
+	stream             *MockRawTopicReaderStream
 	partitionSessionID partitionSessionID
 	mc                 *gomock.Controller
 	partitionSession   *partitionSession
@@ -396,7 +396,7 @@ func newTopicReaderTestEnv(t testing.TB) streamEnv {
 
 	mc := gomock.NewController(t)
 
-	stream := NewMockRawStreamReader(mc)
+	stream := NewMockRawTopicReaderStream(mc)
 
 	cfg := newTopicStreamReaderConfig()
 	cfg.BaseContext = ctx
