@@ -287,65 +287,65 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 	expectedData := [][]byte{[]byte("123"), []byte("4567"), []byte("098"), []byte("0987")}
 	expectedBatch := Batch{
 		commitRange: commitRange{
-			Offset:           prevOffset + 1,
-			EndOffset:        prevOffset + 21,
-			partitionSession: e.partitionSession,
+			commitOffsetStart: prevOffset + 1,
+			commitOffsetEnd:   prevOffset + 21,
+			partitionSession:  e.partitionSession,
 		},
 		Messages: []Message{
 			{
 				SeqNo:                1,
 				CreatedAt:            testTime(1),
 				MessageGroupID:       "1",
-				MessageOffset:        prevOffset.ToInt64() + 1,
+				Offset:               prevOffset.ToInt64() + 1,
 				WrittenAt:            testTime(5),
 				WriteSessionMetadata: map[string]string{"a": "b", "c": "d"},
 				rawDataLen:           3,
 				commitRange: commitRange{
-					Offset:           prevOffset + 1,
-					EndOffset:        prevOffset + 2,
-					partitionSession: e.partitionSession,
+					commitOffsetStart: prevOffset + 1,
+					commitOffsetEnd:   prevOffset + 2,
+					partitionSession:  e.partitionSession,
 				},
 			},
 			{
 				SeqNo:                2,
 				CreatedAt:            testTime(2),
 				MessageGroupID:       "1",
-				MessageOffset:        prevOffset.ToInt64() + 2,
+				Offset:               prevOffset.ToInt64() + 2,
 				WrittenAt:            testTime(5),
 				WriteSessionMetadata: map[string]string{"a": "b", "c": "d"},
 				rawDataLen:           4,
 				commitRange: commitRange{
-					Offset:           prevOffset + 2,
-					EndOffset:        prevOffset + 3,
-					partitionSession: e.partitionSession,
+					commitOffsetStart: prevOffset + 2,
+					commitOffsetEnd:   prevOffset + 3,
+					partitionSession:  e.partitionSession,
 				},
 			},
 			{
 				SeqNo:                3,
 				CreatedAt:            testTime(3),
 				MessageGroupID:       "2",
-				MessageOffset:        prevOffset.ToInt64() + 10,
+				Offset:               prevOffset.ToInt64() + 10,
 				WrittenAt:            testTime(6),
 				WriteSessionMetadata: map[string]string{"e": "f", "g": "h"},
 				rawDataLen:           len(compress("098")),
 				commitRange: commitRange{
-					Offset:           prevOffset + 3,
-					EndOffset:        prevOffset + 11,
-					partitionSession: e.partitionSession,
+					commitOffsetStart: prevOffset + 3,
+					commitOffsetEnd:   prevOffset + 11,
+					partitionSession:  e.partitionSession,
 				},
 			},
 			{
 				SeqNo:                4,
 				CreatedAt:            testTime(4),
 				MessageGroupID:       "2",
-				MessageOffset:        prevOffset.ToInt64() + 20,
+				Offset:               prevOffset.ToInt64() + 20,
 				WrittenAt:            testTime(6),
 				WriteSessionMetadata: map[string]string{"e": "f", "g": "h"},
 				rawDataLen:           len(compress("0987")),
 				commitRange: commitRange{
-					Offset:           prevOffset + 11,
-					EndOffset:        prevOffset + 21,
-					partitionSession: e.partitionSession,
+					commitOffsetStart: prevOffset + 11,
+					commitOffsetEnd:   prevOffset + 21,
+					partitionSession:  e.partitionSession,
 				},
 			},
 		},
@@ -377,7 +377,7 @@ type streamEnv struct {
 	stream             *MockRawStreamReader
 	partitionSessionID partitionSessionID
 	mc                 *gomock.Controller
-	partitionSession   *PartitionSession
+	partitionSession   *partitionSession
 
 	m                          xsync.Mutex
 	messagesFromServerToClient chan testStreamResult

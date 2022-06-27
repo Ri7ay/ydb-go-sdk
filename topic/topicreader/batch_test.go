@@ -9,19 +9,19 @@ import (
 
 func TestBatch_New(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		m1 := Message{
-			commitRange: commitRange{Offset: 1, EndOffset: 2, partitionSession: session},
+			commitRange: commitRange{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session},
 		}
 		m2 := Message{
-			commitRange: commitRange{Offset: 2, EndOffset: 3, partitionSession: session},
+			commitRange: commitRange{commitOffsetStart: 2, commitOffsetEnd: 3, partitionSession: session},
 		}
 		batch, err := newBatch(session, []Message{m1, m2})
 		require.NoError(t, err)
 
 		expected := Batch{
 			Messages:    []Message{m1, m2},
-			commitRange: commitRange{Offset: 1, EndOffset: 3, partitionSession: session},
+			commitRange: commitRange{commitOffsetStart: 1, commitOffsetEnd: 3, partitionSession: session},
 		}
 		require.Equal(t, expected, batch)
 	})
@@ -29,7 +29,7 @@ func TestBatch_New(t *testing.T) {
 
 func TestBatch_Cut(t *testing.T) {
 	t.Run("Full", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest := batch.cutMessages(100)
@@ -38,7 +38,7 @@ func TestBatch_Cut(t *testing.T) {
 		require.True(t, rest.isEmpty())
 	})
 	t.Run("Zero", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest := batch.cutMessages(0)
@@ -47,7 +47,7 @@ func TestBatch_Cut(t *testing.T) {
 		require.True(t, head.isEmpty())
 	})
 	t.Run("Middle", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch, _ := newBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		head, rest := batch.cutMessages(1)
@@ -61,14 +61,14 @@ func TestBatch_Cut(t *testing.T) {
 
 func TestBatch_Extend(t *testing.T) {
 	t.Run("Ok", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		m1 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 1, time.UTC),
-			commitRange: commitRange{Offset: 10, EndOffset: 11, partitionSession: session},
+			commitRange: commitRange{commitOffsetStart: 10, commitOffsetEnd: 11, partitionSession: session},
 		}
 		m2 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 2, time.UTC),
-			commitRange: commitRange{Offset: 11, EndOffset: 12, partitionSession: session},
+			commitRange: commitRange{commitOffsetStart: 11, commitOffsetEnd: 12, partitionSession: session},
 		}
 
 		b1 := Batch{
@@ -85,18 +85,18 @@ func TestBatch_Extend(t *testing.T) {
 
 		expected := Batch{
 			Messages:    []Message{m1, m2},
-			commitRange: commitRange{Offset: 10, EndOffset: 12, partitionSession: session},
+			commitRange: commitRange{commitOffsetStart: 10, commitOffsetEnd: 12, partitionSession: session},
 		}
 		require.Equal(t, expected, res)
 	})
 	t.Run("BadInterval", func(t *testing.T) {
 		m1 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 1, time.UTC),
-			commitRange: commitRange{Offset: 10, EndOffset: 11},
+			commitRange: commitRange{commitOffsetStart: 10, commitOffsetEnd: 11},
 		}
 		m2 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 2, time.UTC),
-			commitRange: commitRange{Offset: 20, EndOffset: 30},
+			commitRange: commitRange{commitOffsetStart: 20, commitOffsetEnd: 30},
 		}
 
 		b1 := Batch{
@@ -114,16 +114,16 @@ func TestBatch_Extend(t *testing.T) {
 		require.Equal(t, Batch{}, res)
 	})
 	t.Run("BadSession", func(t *testing.T) {
-		session1 := &PartitionSession{}
-		session2 := &PartitionSession{}
+		session1 := &partitionSession{}
+		session2 := &partitionSession{}
 
 		m1 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 1, time.UTC),
-			commitRange: commitRange{Offset: 10, EndOffset: 11, partitionSession: session1},
+			commitRange: commitRange{commitOffsetStart: 10, commitOffsetEnd: 11, partitionSession: session1},
 		}
 		m2 := Message{
 			WrittenAt:   time.Date(2022, 6, 17, 15, 15, 0, 2, time.UTC),
-			commitRange: commitRange{Offset: 11, EndOffset: 12, partitionSession: session2},
+			commitRange: commitRange{commitOffsetStart: 11, commitOffsetEnd: 12, partitionSession: session2},
 		}
 
 		b1 := Batch{

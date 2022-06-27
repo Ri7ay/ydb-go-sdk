@@ -14,7 +14,7 @@ type Batch struct {
 	commitRange // от всех сообщений батча
 }
 
-func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
+func newBatch(session *partitionSession, messages []Message) (Batch, error) {
 	for i := 0; i < len(messages); i++ {
 		mess := messages[i]
 
@@ -23,7 +23,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 		}
 
 		prev := messages[i-1]
-		if prev.EndOffset != mess.Offset {
+		if prev.commitOffsetEnd != mess.commitOffsetStart {
 			return Batch{}, xerrors.NewWithStackTrace("ydb: bad message offset while messages batch create")
 		}
 
@@ -39,8 +39,8 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 		partitionSession: session,
 	}
 	if len(messages) > 0 {
-		offset.Offset = messages[0].Offset
-		offset.EndOffset = messages[len(messages)-1].EndOffset
+		offset.commitOffsetStart = messages[0].commitOffsetStart
+		offset.commitOffsetEnd = messages[len(messages)-1].commitOffsetEnd
 	}
 
 	return Batch{
@@ -49,7 +49,7 @@ func newBatch(session *PartitionSession, messages []Message) (Batch, error) {
 	}, nil
 }
 
-func newBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Batch, error) {
+func newBatchFromStream(session *partitionSession, sb rawtopicreader.Batch) (Batch, error) {
 	messages := make([]Message, len(sb.MessageData))
 	prevOffset := session.lastReceivedMessageOffset()
 	for i := range sb.MessageData {
@@ -58,7 +58,7 @@ func newBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		dstMess := &messages[i]
 		dstMess.CreatedAt = sMess.CreatedAt
 		dstMess.MessageGroupID = sMess.MessageGroupID
-		dstMess.MessageOffset = sMess.Offset.ToInt64()
+		dstMess.Offset = sMess.Offset.ToInt64()
 		dstMess.SeqNo = sMess.SeqNo
 		dstMess.WrittenAt = sb.WrittenAt
 		dstMess.WriteSessionMetadata = sb.WriteSessionMeta
@@ -67,8 +67,8 @@ func newBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		dstMess.Data = createReader(sb.Codec, sMess.Data)
 
 		dstMess.commitRange.partitionSession = session
-		dstMess.commitRange.Offset = prevOffset + 1
-		dstMess.commitRange.EndOffset = sMess.Offset + 1
+		dstMess.commitRange.commitOffsetStart = prevOffset + 1
+		dstMess.commitRange.commitOffsetEnd = sMess.Offset + 1
 
 		prevOffset = sMess.Offset
 	}
@@ -82,8 +82,15 @@ func (m Batch) Context() context.Context {
 	return m.partitionSession.Context()
 }
 
-func (m Batch) PartitionSession() *PartitionSession {
+func (m Batch) PartitionSession() *partitionSession {
 	return m.partitionSession
+}
+
+func (m Batch) EndOffset() int64 {
+	if len(m.Messages) == 0 {
+		return -1
+	}
+	return m.Messages[len(m.Messages)-1].Offset
 }
 
 func (m Batch) append(b Batch) (Batch, error) {
@@ -91,13 +98,13 @@ func (m Batch) append(b Batch) (Batch, error) {
 		return Batch{}, xerrors.WithStackTrace(errors.New("ydb: bad partition session for merge"))
 	}
 
-	if m.EndOffset != b.Offset {
+	if m.commitOffsetEnd != b.commitOffsetStart {
 		return Batch{}, xerrors.WithStackTrace(errors.New("ydb: bad offset interval for merge"))
 	}
 
 	res := m
 	res.Messages = append(res.Messages, b.Messages...)
-	res.EndOffset = b.EndOffset
+	res.commitOffsetEnd = b.commitOffsetEnd
 	return res, nil
 }
 

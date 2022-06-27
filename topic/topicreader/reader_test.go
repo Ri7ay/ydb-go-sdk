@@ -103,17 +103,17 @@ func TestReader_Commit(t *testing.T) {
 	reader := &Reader{reader: baseReader}
 
 	expectedRangeOk := commitRange{
-		Offset:           1,
-		EndOffset:        10,
-		partitionSession: &PartitionSession{partitionSessionID: 10},
+		commitOffsetStart: 1,
+		commitOffsetEnd:   10,
+		partitionSession:  &partitionSession{partitionSessionID: 10},
 	}
 	baseReader.EXPECT().Commit(gomock.Any(), expectedRangeOk).Return(nil)
 	require.NoError(t, reader.Commit(context.Background(), Message{commitRange: expectedRangeOk}))
 
 	expectedRangeErr := commitRange{
-		Offset:           15,
-		EndOffset:        20,
-		partitionSession: &PartitionSession{partitionSessionID: 30},
+		commitOffsetStart: 15,
+		commitOffsetEnd:   20,
+		partitionSession:  &partitionSession{partitionSessionID: 30},
 	}
 
 	testErr := errors.New("test err")

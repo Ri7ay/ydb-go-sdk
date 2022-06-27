@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -33,7 +32,7 @@ type Message struct {
 	CreatedAt            time.Time
 	MessageGroupID       string
 	WriteSessionMetadata map[string]string
-	MessageOffset        int64
+	Offset               int64
 	WrittenAt            time.Time
 	Data                 io.Reader
 
@@ -48,25 +47,6 @@ func (m *Message) Context() context.Context {
 func (m *Message) Topic() string {
 	return m.session().Topic
 }
-
-var _ committedBySingleRange = Message{}
-
-type commitRange struct {
-	Offset    rawtopicreader.Offset
-	EndOffset rawtopicreader.Offset
-
-	partitionSession *PartitionSession
-}
-
-func (c commitRange) getCommitRange() commitRange {
-	return c
-}
-
-func (c commitRange) session() *PartitionSession {
-	return c.partitionSession
-}
-
-var _ committedBySingleRange = &Batch{}
 
 func createReader(codec rawtopic.Codec, rawBytes []byte) io.Reader {
 	switch codec {

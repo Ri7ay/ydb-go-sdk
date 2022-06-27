@@ -99,7 +99,7 @@ func WithReadSelector(readSelector ...ReadSelector) ReaderOption {
 }
 
 type GetPartitionStartOffsetRequest struct {
-	Session *PartitionSession
+	Session *partitionSession
 }
 type GetPartitionStartOffsetResponse struct {
 	startOffset     rawtopicreader.Offset

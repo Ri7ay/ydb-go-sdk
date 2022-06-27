@@ -11,8 +11,8 @@ import (
 )
 
 func TestBatcher_PushBatch(t *testing.T) {
-	session1 := &PartitionSession{}
-	session2 := &PartitionSession{}
+	session1 := &partitionSession{}
+	session2 := &partitionSession{}
 
 	m11 := Message{
 		WrittenAt:   testTime(1),
@@ -53,7 +53,7 @@ func TestBatcher_PushBatch(t *testing.T) {
 func TestBatcher_PushRawMessage(t *testing.T) {
 	t.Run("Empty", func(t *testing.T) {
 		b := newBatcher()
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		m := &rawtopicreader.StopPartitionSessionRequest{
 			PartitionSessionID: 1,
 		}
@@ -64,7 +64,7 @@ func TestBatcher_PushRawMessage(t *testing.T) {
 	})
 	t.Run("AddRawAfterBatch", func(t *testing.T) {
 		b := newBatcher()
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 		m := &rawtopicreader.StopPartitionSessionRequest{
 			PartitionSessionID: 1,
@@ -82,7 +82,7 @@ func TestBatcher_PushRawMessage(t *testing.T) {
 
 	t.Run("AddBatchRawBatchBatch", func(t *testing.T) {
 		b := newBatcher()
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch1 := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 		batch2 := mustNewBatch(session, []Message{{WrittenAt: testTime(2)}})
 		batch3 := mustNewBatch(session, []Message{{WrittenAt: testTime(3)}})
@@ -119,8 +119,8 @@ func TestBatcher_Pop(t *testing.T) {
 
 	t.Run("SimpleOneOfTwo", func(t *testing.T) {
 		ctx := context.Background()
-		session1 := &PartitionSession{}
-		session2 := &PartitionSession{}
+		session1 := &partitionSession{}
+		session2 := &partitionSession{}
 		batch := mustNewBatch(session1, []Message{{WrittenAt: testTime(1), commitRange: commitRange{partitionSession: session1}}})
 		batch2 := mustNewBatch(session2, []Message{{WrittenAt: testTime(2), commitRange: commitRange{partitionSession: session2}}})
 
@@ -193,8 +193,8 @@ func TestBatcher_Pop(t *testing.T) {
 	})
 
 	t.Run("PreferFirstRawMessageFromDifferentSessions", func(t *testing.T) {
-		session1 := &PartitionSession{}
-		session2 := &PartitionSession{}
+		session1 := &partitionSession{}
+		session2 := &partitionSession{}
 
 		b := newBatcher()
 		m := &rawtopicreader.StopPartitionSessionRequest{PartitionSessionID: 1}
@@ -215,7 +215,7 @@ func TestBatcher_Find(t *testing.T) {
 		require.False(t, findRes.Ok)
 	})
 	t.Run("FoundEmptyFilter", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
 
 		b := newBatcher()
@@ -234,7 +234,7 @@ func TestBatcher_Find(t *testing.T) {
 	})
 
 	t.Run("FoundPartialBatchFilter", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}, {WrittenAt: testTime(2)}})
 
 		b := newBatcher()
@@ -259,7 +259,7 @@ func TestBatcher_Find(t *testing.T) {
 
 func TestBatcher_Apply(t *testing.T) {
 	t.Run("New", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		b := newBatcher()
 
 		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
@@ -274,7 +274,7 @@ func TestBatcher_Apply(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		session := &PartitionSession{}
+		session := &partitionSession{}
 		b := newBatcher()
 
 		batch := mustNewBatch(session, []Message{{WrittenAt: testTime(1)}})
@@ -357,7 +357,7 @@ func TestBatcher_Fire(t *testing.T) {
 	})
 }
 
-func mustNewBatch(session *PartitionSession, messages []Message) Batch {
+func mustNewBatch(session *partitionSession, messages []Message) Batch {
 	batch, err := newBatch(session, messages)
 	if err != nil {
 		panic(err)

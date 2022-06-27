@@ -79,7 +79,7 @@ func (r *CommitRages) optimize() {
 			return true
 		case cJ.partitionSession.partitionSessionID < cI.partitionSession.partitionSessionID:
 			return false
-		case cI.Offset < cJ.Offset:
+		case cI.commitOffsetStart < cJ.commitOffsetStart:
 			return true
 		default:
 			return false
@@ -91,8 +91,8 @@ func (r *CommitRages) optimize() {
 	for i := 1; i < len(r.ranges); i++ {
 		commit := &r.ranges[i]
 		if lastCommit.partitionSession.partitionSessionID == commit.partitionSession.partitionSessionID &&
-			lastCommit.EndOffset == commit.Offset {
-			lastCommit.EndOffset = commit.EndOffset
+			lastCommit.commitOffsetEnd == commit.commitOffsetStart {
+			lastCommit.commitOffsetEnd = commit.commitOffsetEnd
 		} else {
 			newCommits = append(newCommits, *commit)
 			lastCommit = &newCommits[len(newCommits)-1]
@@ -120,8 +120,8 @@ func (r *CommitRages) toRawPartitionCommitOffset() []rawtopicreader.PartitionCom
 	for i := range r.ranges {
 		commit := &r.ranges[i]
 		offsetsRange := rawtopicreader.OffsetRange{
-			Start: commit.Offset,
-			End:   commit.EndOffset,
+			Start: commit.commitOffsetStart,
+			End:   commit.commitOffsetEnd,
 		}
 		if partition.PartitionSessionID != commit.partitionSession.partitionSessionID {
 			partitionOffsets = append(partitionOffsets, newPartition(commit.partitionSession.partitionSessionID))
@@ -130,4 +130,18 @@ func (r *CommitRages) toRawPartitionCommitOffset() []rawtopicreader.PartitionCom
 		partition.Offsets = append(partition.Offsets, offsetsRange)
 	}
 	return partitionOffsets
+}
+
+type commitRange struct {
+	commitOffsetStart rawtopicreader.Offset
+	commitOffsetEnd   rawtopicreader.Offset
+	partitionSession  *partitionSession
+}
+
+func (c commitRange) getCommitRange() commitRange {
+	return c
+}
+
+func (c commitRange) session() *partitionSession {
+	return c.partitionSession
 }

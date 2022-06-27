@@ -133,7 +133,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 func TestTopicReaderReconnectorCommit(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "k", "v")
-	expectedCommitRange := commitRange{Offset: 1, EndOffset: 2}
+	expectedCommitRange := commitRange{commitOffsetStart: 1, commitOffsetEnd: 2}
 	testErr := errors.New("test")
 	testErr2 := errors.New("test2")
 	t.Run("AllOk", func(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
-type PartitionSession struct {
+type partitionSession struct {
 	Topic       string
 	PartitionID int64
 
@@ -29,10 +29,10 @@ func newPartitionSession(
 	partitionID int64,
 	partitionSessionID rawtopicreader.PartitionSessionID,
 	committedOffset rawtopicreader.Offset,
-) *PartitionSession {
+) *partitionSession {
 	partitionContext, cancel := xcontext.WithErrCancel(partitionContext)
 
-	return &PartitionSession{
+	return &partitionSession{
 		Topic:                    topic,
 		PartitionID:              partitionID,
 		ctx:                      partitionContext,
@@ -43,15 +43,15 @@ func newPartitionSession(
 	}
 }
 
-func (s *PartitionSession) Context() context.Context {
+func (s *partitionSession) Context() context.Context {
 	return s.ctx
 }
 
-func (s *PartitionSession) close(err error) {
+func (s *partitionSession) close(err error) {
 	s.ctxCancel(err)
 }
 
-func (s *PartitionSession) committedOffset() rawtopicreader.Offset {
+func (s *partitionSession) committedOffset() rawtopicreader.Offset {
 	v := atomic.LoadInt64(&s.committedOffsetVal)
 
 	var res rawtopicreader.Offset
@@ -59,11 +59,11 @@ func (s *PartitionSession) committedOffset() rawtopicreader.Offset {
 	return res
 }
 
-func (s *PartitionSession) setCommittedOffset(v rawtopicreader.Offset) {
+func (s *partitionSession) setCommittedOffset(v rawtopicreader.Offset) {
 	atomic.StoreInt64(&s.committedOffsetVal, v.ToInt64())
 }
 
-func (s *PartitionSession) lastReceivedMessageOffset() rawtopicreader.Offset {
+func (s *partitionSession) lastReceivedMessageOffset() rawtopicreader.Offset {
 	v := atomic.LoadInt64(&s.lastReceivedOffsetEndVal)
 
 	var res rawtopicreader.Offset
@@ -71,20 +71,20 @@ func (s *PartitionSession) lastReceivedMessageOffset() rawtopicreader.Offset {
 	return res
 }
 
-func (s *PartitionSession) setLastReceivedMessageOffset(v rawtopicreader.Offset) {
+func (s *partitionSession) setLastReceivedMessageOffset(v rawtopicreader.Offset) {
 	atomic.StoreInt64(&s.lastReceivedOffsetEndVal, v.ToInt64())
 }
 
 type partitionSessionStorage struct {
 	m        sync.RWMutex
-	sessions map[partitionSessionID]*PartitionSession
+	sessions map[partitionSessionID]*partitionSession
 }
 
 func (c *partitionSessionStorage) init() {
-	c.sessions = make(map[partitionSessionID]*PartitionSession)
+	c.sessions = make(map[partitionSessionID]*partitionSession)
 }
 
-func (c *partitionSessionStorage) Add(session *PartitionSession) error {
+func (c *partitionSessionStorage) Add(session *partitionSession) error {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -95,7 +95,7 @@ func (c *partitionSessionStorage) Add(session *PartitionSession) error {
 	return nil
 }
 
-func (c *partitionSessionStorage) Get(id partitionSessionID) (*PartitionSession, error) {
+func (c *partitionSessionStorage) Get(id partitionSessionID) (*partitionSession, error) {
 	c.m.RLock()
 	defer c.m.RUnlock()
 
@@ -107,7 +107,7 @@ func (c *partitionSessionStorage) Get(id partitionSessionID) (*PartitionSession,
 	return partition, nil
 }
 
-func (c *partitionSessionStorage) Remove(id partitionSessionID) (*PartitionSession, error) {
+func (c *partitionSessionStorage) Remove(id partitionSessionID) (*partitionSession, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 

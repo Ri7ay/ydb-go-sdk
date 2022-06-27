@@ -8,9 +8,13 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
+var _ committedBySingleRange = Message{}
+
+var _ committedBySingleRange = Batch{}
+
 func TestCompressCommitsInplace(t *testing.T) {
-	session1 := &PartitionSession{partitionSessionID: 1}
-	session2 := &PartitionSession{partitionSessionID: 2}
+	session1 := &partitionSession{partitionSessionID: 1}
+	session2 := &partitionSession{partitionSessionID: 2}
 	table := []struct {
 		name     string
 		source   []commitRange
@@ -25,16 +29,16 @@ func TestCompressCommitsInplace(t *testing.T) {
 			name: "OneCommit",
 			source: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        2,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   2,
+					partitionSession:  session1,
 				},
 			},
 			expected: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        2,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   2,
+					partitionSession:  session1,
 				},
 			},
 		},
@@ -42,26 +46,26 @@ func TestCompressCommitsInplace(t *testing.T) {
 			name: "CompressedToOne",
 			source: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        2,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   2,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           2,
-					EndOffset:        5,
-					partitionSession: session1,
+					commitOffsetStart: 2,
+					commitOffsetEnd:   5,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           5,
-					EndOffset:        10,
-					partitionSession: session1,
+					commitOffsetStart: 5,
+					commitOffsetEnd:   10,
+					partitionSession:  session1,
 				},
 			},
 			expected: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        10,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   10,
+					partitionSession:  session1,
 				},
 			},
 		},
@@ -69,26 +73,26 @@ func TestCompressCommitsInplace(t *testing.T) {
 			name: "CompressedUnordered",
 			source: []commitRange{
 				{
-					Offset:           5,
-					EndOffset:        10,
-					partitionSession: session1,
+					commitOffsetStart: 5,
+					commitOffsetEnd:   10,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           2,
-					EndOffset:        5,
-					partitionSession: session1,
+					commitOffsetStart: 2,
+					commitOffsetEnd:   5,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           1,
-					EndOffset:        2,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   2,
+					partitionSession:  session1,
 				},
 			},
 			expected: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        10,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   10,
+					partitionSession:  session1,
 				},
 			},
 		},
@@ -96,26 +100,26 @@ func TestCompressCommitsInplace(t *testing.T) {
 			name: "CompressDifferentSessionsSeparated",
 			source: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        2,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   2,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           2,
-					EndOffset:        3,
-					partitionSession: session2,
+					commitOffsetStart: 2,
+					commitOffsetEnd:   3,
+					partitionSession:  session2,
 				},
 			},
 			expected: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        2,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   2,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           2,
-					EndOffset:        3,
-					partitionSession: session2,
+					commitOffsetStart: 2,
+					commitOffsetEnd:   3,
+					partitionSession:  session2,
 				},
 			},
 		},
@@ -123,36 +127,36 @@ func TestCompressCommitsInplace(t *testing.T) {
 			name: "CompressTwoSessions",
 			source: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        1,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   1,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           2,
-					EndOffset:        3,
-					partitionSession: session2,
+					commitOffsetStart: 2,
+					commitOffsetEnd:   3,
+					partitionSession:  session2,
 				},
 				{
-					Offset:           1,
-					EndOffset:        3,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   3,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           3,
-					EndOffset:        5,
-					partitionSession: session2,
+					commitOffsetStart: 3,
+					commitOffsetEnd:   5,
+					partitionSession:  session2,
 				},
 			},
 			expected: []commitRange{
 				{
-					Offset:           1,
-					EndOffset:        3,
-					partitionSession: session1,
+					commitOffsetStart: 1,
+					commitOffsetEnd:   3,
+					partitionSession:  session1,
 				},
 				{
-					Offset:           2,
-					EndOffset:        5,
-					partitionSession: session2,
+					commitOffsetStart: 2,
+					commitOffsetEnd:   5,
+					partitionSession:  session2,
 				},
 			},
 		},
@@ -168,8 +172,8 @@ func TestCompressCommitsInplace(t *testing.T) {
 }
 
 func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
-	session1 := &PartitionSession{partitionSessionID: 1}
-	session2 := &PartitionSession{partitionSessionID: 2}
+	session1 := &partitionSession{partitionSessionID: 1}
+	session2 := &partitionSession{partitionSessionID: 2}
 
 	table := []struct {
 		name     string
@@ -184,7 +188,7 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		{
 			name: "OneCommit",
 			source: []commitRange{
-				{Offset: 1, EndOffset: 2, partitionSession: session1},
+				{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session1},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{
@@ -198,9 +202,9 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		{
 			name: "NeighboursWithOneSession",
 			source: []commitRange{
-				{Offset: 1, EndOffset: 2, partitionSession: session1},
-				{Offset: 10, EndOffset: 20, partitionSession: session1},
-				{Offset: 30, EndOffset: 40, partitionSession: session1},
+				{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session1},
+				{commitOffsetStart: 10, commitOffsetEnd: 20, partitionSession: session1},
+				{commitOffsetStart: 30, commitOffsetEnd: 40, partitionSession: session1},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{
@@ -216,10 +220,10 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		{
 			name: "TwoSessionsSameOffsets",
 			source: []commitRange{
-				{Offset: 1, EndOffset: 2, partitionSession: session1},
-				{Offset: 10, EndOffset: 20, partitionSession: session1},
-				{Offset: 1, EndOffset: 2, partitionSession: session2},
-				{Offset: 10, EndOffset: 20, partitionSession: session2},
+				{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session1},
+				{commitOffsetStart: 10, commitOffsetEnd: 20, partitionSession: session1},
+				{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session2},
+				{commitOffsetStart: 10, commitOffsetEnd: 20, partitionSession: session2},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{
@@ -241,11 +245,11 @@ func TestCommitsToRawPartitionCommitOffset(t *testing.T) {
 		{
 			name: "TwoSessionsWithDifferenceOffsets",
 			source: []commitRange{
-				{Offset: 1, EndOffset: 2, partitionSession: session1},
-				{Offset: 10, EndOffset: 20, partitionSession: session1},
-				{Offset: 1, EndOffset: 2, partitionSession: session2},
-				{Offset: 3, EndOffset: 4, partitionSession: session2},
-				{Offset: 5, EndOffset: 6, partitionSession: session2},
+				{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session1},
+				{commitOffsetStart: 10, commitOffsetEnd: 20, partitionSession: session1},
+				{commitOffsetStart: 1, commitOffsetEnd: 2, partitionSession: session2},
+				{commitOffsetStart: 3, commitOffsetEnd: 4, partitionSession: session2},
+				{commitOffsetStart: 5, commitOffsetEnd: 6, partitionSession: session2},
 			},
 			expected: []rawtopicreader.PartitionCommitOffset{
 				{

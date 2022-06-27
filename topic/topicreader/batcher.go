@@ -50,14 +50,14 @@ func (b *batcher) PushBatch(batch Batch) error {
 	return b.addNeedLock(batch.partitionSession, newBatcherItemBatch(batch))
 }
 
-func (b *batcher) PushRawMessage(session *PartitionSession, m rawtopicreader.ServerMessage) error {
+func (b *batcher) PushRawMessage(session *partitionSession, m rawtopicreader.ServerMessage) error {
 	b.m.Lock()
 	defer b.m.Unlock()
 
 	return b.addNeedLock(session, newBatcherItemRawMessage(m))
 }
 
-func (b *batcher) addNeedLock(session *PartitionSession, item batcherMessageOrderItem) error {
+func (b *batcher) addNeedLock(session *partitionSession, item batcherMessageOrderItem) error {
 	var currentItems batcherMessageOrderItems
 	var ok bool
 	var err error
@@ -228,7 +228,7 @@ func (b *batcher) removeWaiterByIndexNeedLock(index int) {
 }
 
 type batcherResultCandidate struct {
-	Key         *PartitionSession
+	Key         *partitionSession
 	Result      batcherMessageOrderItem
 	Rest        batcherMessageOrderItems
 	WaiterIndex int
@@ -236,7 +236,7 @@ type batcherResultCandidate struct {
 }
 
 func newBatcherResultCandidate(
-	key *PartitionSession,
+	key *partitionSession,
 	result batcherMessageOrderItem,
 	rest batcherMessageOrderItems,
 	waiterIndex int,
@@ -291,7 +291,7 @@ func (b *batcher) applyNeedLock(res batcherResultCandidate) {
 	}
 }
 
-type batcherMessagesMap map[*PartitionSession]batcherMessageOrderItems
+type batcherMessagesMap map[*partitionSession]batcherMessageOrderItems
 
 type batcherMessageOrderItems []batcherMessageOrderItem
 

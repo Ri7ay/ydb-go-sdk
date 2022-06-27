@@ -43,15 +43,15 @@ func TestCommitterCommitDisabled(t *testing.T) {
 func TestCommitterCommitAsync(t *testing.T) {
 	t.Run("SendCommit", func(t *testing.T) {
 		ctx := testContext(t)
-		session := &PartitionSession{
+		session := &partitionSession{
 			ctx:                context.Background(),
 			partitionSessionID: 1,
 		}
 
 		commitRange := commitRange{
-			Offset:           1,
-			EndOffset:        2,
-			partitionSession: session,
+			commitOffsetStart: 1,
+			commitOffsetEnd:   2,
+			partitionSession:  session,
 		}
 
 		sendCalled := make(emptyChan)
@@ -74,15 +74,15 @@ func TestCommitterCommitAsync(t *testing.T) {
 func TestCommitterCommitSync(t *testing.T) {
 	t.Run("SendCommit", func(t *testing.T) {
 		ctx := testContext(t)
-		session := &PartitionSession{
+		session := &partitionSession{
 			ctx:                context.Background(),
 			partitionSessionID: 1,
 		}
 
 		commitRange := commitRange{
-			Offset:           1,
-			EndOffset:        2,
-			partitionSession: session,
+			commitOffsetStart: 1,
+			commitOffsetEnd:   2,
+			partitionSession:  session,
 		}
 
 		sendCalled := false
@@ -95,7 +95,7 @@ func TestCommitterCommitSync(t *testing.T) {
 					CommitOffsets: NewCommitRanges(commitRange).toPartitionsOffsets(),
 				},
 				mess)
-			c.OnCommitNotify(session, commitRange.EndOffset)
+			c.OnCommitNotify(session, commitRange.commitOffsetEnd)
 			return nil
 		}
 		require.NoError(t, c.Commit(ctx, commitRange))
@@ -104,15 +104,15 @@ func TestCommitterCommitSync(t *testing.T) {
 
 	t.Run("SuccessCommitWithNotifyAfterCommit", func(t *testing.T) {
 		ctx := testContext(t)
-		session := &PartitionSession{
+		session := &partitionSession{
 			ctx:                context.Background(),
 			partitionSessionID: 1,
 		}
 
 		commitRange := commitRange{
-			Offset:           1,
-			EndOffset:        2,
-			partitionSession: session,
+			commitOffsetStart: 1,
+			commitOffsetEnd:   2,
+			partitionSession:  session,
 		}
 
 		commitSended := make(emptyChan)
@@ -142,16 +142,16 @@ func TestCommitterCommitSync(t *testing.T) {
 
 	t.Run("SuccessCommitPreviousCommitted", func(t *testing.T) {
 		ctx := testContext(t)
-		session := &PartitionSession{
+		session := &partitionSession{
 			ctx:                ctx,
 			partitionSessionID: 1,
 			committedOffsetVal: 2,
 		}
 
 		commitRange := commitRange{
-			Offset:           1,
-			EndOffset:        2,
-			partitionSession: session,
+			commitOffsetStart: 1,
+			commitOffsetEnd:   2,
+			partitionSession:  session,
 		}
 
 		c := newTestCommitter(ctx, t)
@@ -172,7 +172,7 @@ func TestCommitterBuffer(t *testing.T) {
 			return nil
 		}
 
-		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{partitionSessionID: 2}}))
+		require.NoError(t, c.pushCommit(commitRange{partitionSession: &partitionSession{partitionSessionID: 2}}))
 		<-sendCalled
 	})
 	t.Run("TimeLagTrigger", func(t *testing.T) {
@@ -199,8 +199,8 @@ func TestCommitterBuffer(t *testing.T) {
 			return nil
 		}
 
-		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{partitionSessionID: 1}}))
-		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{partitionSessionID: 2}}))
+		require.NoError(t, c.pushCommit(commitRange{partitionSession: &partitionSession{partitionSessionID: 1}}))
+		require.NoError(t, c.pushCommit(commitRange{partitionSession: &partitionSession{partitionSessionID: 2}}))
 		require.False(t, isSended())
 
 		clock.BlockUntil(1)
@@ -229,12 +229,12 @@ func TestCommitterBuffer(t *testing.T) {
 			return nil
 		}
 		c.commits.appendCommitRanges([]commitRange{
-			{partitionSession: &PartitionSession{partitionSessionID: 1}},
-			{partitionSession: &PartitionSession{partitionSessionID: 2}},
-			{partitionSession: &PartitionSession{partitionSessionID: 3}},
+			{partitionSession: &partitionSession{partitionSessionID: 1}},
+			{partitionSession: &partitionSession{partitionSessionID: 2}},
+			{partitionSession: &partitionSession{partitionSessionID: 3}},
 		})
 
-		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{partitionSessionID: 4}}))
+		require.NoError(t, c.pushCommit(commitRange{partitionSession: &partitionSession{partitionSessionID: 4}}))
 		<-sendCalled
 	})
 	t.Run("CountAndTimeFireCountOnAdd", func(t *testing.T) {
@@ -265,7 +265,7 @@ func TestCommitterBuffer(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			require.NoError(t, c.pushCommit(
 				commitRange{
-					partitionSession: &PartitionSession{
+					partitionSession: &partitionSession{
 						partitionSessionID: rawtopicreader.PartitionSessionID(i),
 					},
 				},
@@ -278,7 +278,7 @@ func TestCommitterBuffer(t *testing.T) {
 			require.False(t, isSended())
 		}
 
-		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{partitionSessionID: 3}}))
+		require.NoError(t, c.pushCommit(commitRange{partitionSession: &partitionSession{partitionSessionID: 3}}))
 		<-sendCalled
 	})
 	t.Run("CountAndTimeFireTime", func(t *testing.T) {
@@ -294,7 +294,7 @@ func TestCommitterBuffer(t *testing.T) {
 			close(sendCalled)
 			return nil
 		}
-		require.NoError(t, c.pushCommit(commitRange{partitionSession: &PartitionSession{}}))
+		require.NoError(t, c.pushCommit(commitRange{partitionSession: &partitionSession{}}))
 
 		clock.BlockUntil(1)
 		clock.Advance(time.Second)
@@ -309,7 +309,7 @@ func TestCommitterBuffer(t *testing.T) {
 			sendCalled = true
 			return nil
 		}
-		c.commits.appendCommitRange(commitRange{partitionSession: &PartitionSession{}})
+		c.commits.appendCommitRange(commitRange{partitionSession: &partitionSession{}})
 		require.NoError(t, c.Close(ctx, nil))
 		require.True(t, sendCalled)
 	})

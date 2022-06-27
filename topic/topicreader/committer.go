@@ -164,7 +164,7 @@ func (c *committer) waitSendTrigger(ctx context.Context) {
 func (c *committer) waitCommitAck(ctx context.Context, commitRange commitRange) error {
 	session := commitRange.partitionSession
 
-	waiter := newCommitWaiter(session, commitRange.EndOffset)
+	waiter := newCommitWaiter(session, commitRange.commitOffsetEnd)
 
 	defer c.m.WithLock(func() {
 		c.removeWaiterByIDNeedLock(waiter.ID)
@@ -193,7 +193,7 @@ func (c *committer) waitCommitAck(ctx context.Context, commitRange commitRange) 
 	}
 }
 
-func (c *committer) OnCommitNotify(session *PartitionSession, offset rawtopicreader.Offset) {
+func (c *committer) OnCommitNotify(session *partitionSession, offset rawtopicreader.Offset) {
 	c.m.WithLock(func() {
 		for i := range c.waiters {
 			waiter := c.waiters[i]
@@ -225,18 +225,18 @@ func (c *committer) removeWaiterByIDNeedLock(id int64) {
 
 type commitWaiter struct {
 	ID        int64
-	Session   *PartitionSession
+	Session   *partitionSession
 	EndOffset rawtopicreader.Offset
 	Committed emptyChan
 }
 
-func (w *commitWaiter) checkCondition(session *PartitionSession, offset rawtopicreader.Offset) (finished bool) {
+func (w *commitWaiter) checkCondition(session *partitionSession, offset rawtopicreader.Offset) (finished bool) {
 	return session == w.Session && offset >= w.EndOffset
 }
 
 var commitWaiterLastID int64
 
-func newCommitWaiter(session *PartitionSession, endOffset rawtopicreader.Offset) commitWaiter {
+func newCommitWaiter(session *partitionSession, endOffset rawtopicreader.Offset) commitWaiter {
 	id := atomic.AddInt64(&commitWaiterLastID, 1)
 	return commitWaiter{
 		ID:        id,
