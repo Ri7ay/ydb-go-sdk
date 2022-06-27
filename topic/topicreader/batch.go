@@ -56,19 +56,19 @@ func newBatchFromStream(session *PartitionSession, sb rawtopicreader.Batch) (Bat
 		sMess := &sb.MessageData[i]
 
 		dstMess := &messages[i]
-		dstMess.commitRange.partitionSession = session
+		dstMess.CreatedAt = sMess.CreatedAt
+		dstMess.MessageGroupID = sMess.MessageGroupID
 		dstMess.MessageOffset = sMess.Offset.ToInt64()
-		dstMess.commitRange.Offset = prevOffset + 1
-		dstMess.commitRange.EndOffset = sMess.Offset + 1
+		dstMess.SeqNo = sMess.SeqNo
 		dstMess.WrittenAt = sb.WrittenAt
 		dstMess.WriteSessionMetadata = sb.WriteSessionMeta
 
-		dstMessData := &dstMess.MessageData
-		dstMessData.SeqNo = sMess.SeqNo
-		dstMessData.CreatedAt = sMess.CreatedAt
-		dstMessData.MessageGroupID = sMess.MessageGroupID
-		dstMessData.rawDataLen = len(sMess.Data)
-		dstMessData.Data = createReader(sb.Codec, sMess.Data)
+		dstMess.rawDataLen = len(sMess.Data)
+		dstMess.Data = createReader(sb.Codec, sMess.Data)
+
+		dstMess.commitRange.partitionSession = session
+		dstMess.commitRange.Offset = prevOffset + 1
+		dstMess.commitRange.EndOffset = sMess.Offset + 1
 
 		prevOffset = sMess.Offset
 	}

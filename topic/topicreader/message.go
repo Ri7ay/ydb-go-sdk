@@ -26,23 +26,19 @@ type SizeReader interface {
 	Len() int
 }
 
-type MessageData struct { // Данные для записи. Так же эмбедятся в чтение
-	SeqNo          int64
-	CreatedAt      time.Time
-	MessageGroupID string
-
-	Data               io.Reader
-	rawDataLen         int
-	bufferBytesAccount int
-}
-
 type Message struct {
-	MessageData
 	commitRange
 
+	SeqNo                int64
+	CreatedAt            time.Time
+	MessageGroupID       string
 	WriteSessionMetadata map[string]string
 	MessageOffset        int64
 	WrittenAt            time.Time
+	Data                 io.Reader
+
+	rawDataLen         int
+	bufferBytesAccount int
 }
 
 func (m *Message) Context() context.Context {
