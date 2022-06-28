@@ -22,3 +22,5 @@ func (c Codec) IsCustomerCodec() bool {
 func (c *Codec) FromProto(codec Ydb_PersQueue_V1.Codec) {
 	*c = Codec(codec)
 }
+
+type SupportedCodecs []Codec

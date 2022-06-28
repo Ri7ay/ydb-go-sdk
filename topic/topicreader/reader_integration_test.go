@@ -38,12 +38,37 @@ func TestReaderWithLocalDB(t *testing.T) {
 func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicreader.Reader) {
 	// TODO: Fix connection string to env
 	db, err := ydb.Open(ctx, "grpc://localhost:2136?database=/local")
-
-	require.NoError(t, err)
+	//	err = db.Table().Do(ctx, func(ctx context.Context, s table.Session) error {
+	//		_ = s.ExecuteSchemeQuery(ctx, "DROP TABLE test")
+	//		err = s.ExecuteSchemeQuery(ctx, `
+	//CREATE TABLE
+	//	test
+	//(
+	//	id Int64,
+	//	val Utf8,
+	//	PRIMARY KEY (id)
+	//)
+	//`)
+	//		if err != nil {
+	//			return err
+	//		}
+	//
+	//		return s.ExecuteSchemeQuery(ctx, `
+	//ALTER TABLE
+	//	test
+	//ADD CHANGEFEED
+	//	feed
+	//WITH (
+	//	FORMAT = 'JSON',
+	//	MODE = 'UPDATES'
+	//)
+	//`)
+	//	})
+	//	require.NoError(t, err)
 
 	reader, err := db.Topic().StartRead("test", []topicreader.ReadSelector{
 		{
-			Stream: "/local/asd",
+			Stream: "/local/test/feed",
 		},
 	})
 	require.NoError(t, err)
