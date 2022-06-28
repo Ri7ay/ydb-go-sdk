@@ -25,7 +25,8 @@ type Connector interface {
 	Name() string
 }
 
-func New(service Ydb_PersQueue_V1.PersQueueServiceClient) *Client {
+func New(cc grpc.ClientConnInterface) *Client {
+	service := Ydb_PersQueue_V1.NewPersQueueServiceClient(cc)
 	return &Client{service: service}
 }
 
@@ -34,7 +35,6 @@ func (c *Client) Close(_ context.Context) error {
 }
 
 func (c *Client) StartRead(
-	connectionCtx context.Context,
 	consumer string,
 	readSelectors []topicreader.ReadSelector,
 	opts ...topicreader.ReaderOption,
@@ -51,5 +51,5 @@ func (c *Client) StartRead(
 		return rawtopicreader.StreamReader{Stream: stream}, nil
 	}
 
-	return topicreader.NewReader(connectionCtx, connector, consumer, readSelectors, opts...), nil
+	return topicreader.NewReader(connector, consumer, readSelectors, opts...), nil
 }

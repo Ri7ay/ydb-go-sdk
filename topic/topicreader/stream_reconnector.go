@@ -8,7 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jonboulle/clockwork"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
@@ -23,6 +26,7 @@ const (
 type readerConnectFunc func(ctx context.Context) (batchedStreamReader, error)
 
 type readerReconnector struct {
+	clock      clockwork.Clock
 	background backgroundworkers.BackgroundWorker
 
 	readerConnect readerConnectFunc
@@ -38,8 +42,9 @@ type readerReconnector struct {
 	closedErr                  error
 }
 
-func newReaderReconnector(connectCtx context.Context, connector readerConnectFunc) *readerReconnector {
+func newReaderReconnector(connector readerConnectFunc) *readerReconnector {
 	res := &readerReconnector{
+		clock:         clockwork.NewRealClock(),
 		readerConnect: connector,
 		streamErr:     errUnconnected,
 	}
@@ -152,9 +157,7 @@ func (r *readerReconnector) reconnect(ctx context.Context, oldReader batchedStre
 		oldReader.Close(ctx, xerrors.WithStackTrace(errors.New("ydb: reconnect to pq grpc stream")))
 	}
 
-	reconnectCtx, cancel := context.WithTimeout(ctx, reconnectDuration)
-	newStream, err := r.readerConnect(reconnectCtx)
-	cancel()
+	newStream, err := connectWithTimeout(r.background.Context(), r.readerConnect, r.clock, reconnectDuration)
 
 	if isRetryableError(err) {
 		go func() {
@@ -166,6 +169,34 @@ func (r *readerReconnector) reconnect(ctx context.Context, oldReader batchedStre
 	r.m.WithLock(func() {
 		r.streamVal, r.streamErr = newStream, err
 	})
+}
+
+func connectWithTimeout(baseContext context.Context, connector readerConnectFunc, clock clockwork.Clock, timeout time.Duration) (batchedStreamReader, error) {
+	connectionContext, cancel := xcontext.WithErrCancel(baseContext)
+
+	type connectResult struct {
+		stream batchedStreamReader
+		err    error
+	}
+	result := make(chan connectResult, 1)
+
+	go func() {
+		stream, err := connector(connectionContext)
+		result <- connectResult{stream: stream, err: err}
+	}()
+
+	var res connectResult
+	select {
+	case <-clock.After(timeout):
+		// cancel connection context only if timeout exceed while connection
+		// because if cancel context after connect - it will break
+		cancel(xerrors.WithStackTrace(fmt.Errorf("ydb: open stream reader timeout: %w", context.DeadlineExceeded)))
+		res = <-result
+	case res = <-result:
+		// pass
+	}
+
+	return res.stream, res.err
 }
 
 func (r *readerReconnector) fireReconnectOnRetryableError(stream batchedStreamReader, err error) {

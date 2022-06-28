@@ -24,7 +24,7 @@ import (
 	scriptingConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting/config"
 	internalTable "github.com/ydb-platform/ydb-go-sdk/v3/internal/table"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
-	intpq "github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream"
+	internalTopicStream "github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/log"
@@ -73,6 +73,8 @@ type Connection interface {
 
 	// Scripting returns scripting client
 	Scripting() scripting.Client
+
+	// Topic returns topic client
 	Topic() topic.Client
 
 	// With makes child connection with the same options and another options
@@ -108,8 +110,8 @@ type connection struct {
 	ratelimiter        *internalRatelimiter.Client
 	ratelimiterOptions []ratelimiterConfig.Option
 
-	persqueueOnce    sync.Once
-	persqueue        *intpq.Client
+	topicOnce        sync.Once
+	topic            *internalTopicStream.Client
 	persqueueOptions []persqueueConfig.Option
 
 	pool *conn.Pool
@@ -180,11 +182,11 @@ func (c *connection) Close(ctx context.Context) error {
 			return c.table.Close(ctx)
 		},
 		func(ctx context.Context) error {
-			c.persqueueOnce.Do(func() {})
-			if c.persqueue == nil {
+			c.topicOnce.Do(func() {})
+			if c.topic == nil {
 				return nil
 			}
-			return c.persqueue.Close(ctx)
+			return c.topic.Close(ctx)
 		},
 		c.balancer.Close,
 		c.pool.Release,
@@ -346,11 +348,10 @@ func (c *connection) Scripting() scripting.Client {
 }
 
 func (c *connection) Topic() topic.Client {
-	c.persqueueOnce.Do(func() {
-		c.persqueue = intpq.New(c.balancer, c.persqueueOptions)
+	c.topicOnce.Do(func() {
+		c.topic = internalTopicStream.New(c.balancer)
 	})
-	panic("not implemented")
-	// return c.persqueue
+	return c.topic
 }
 
 // Open connects to database by DSN and return driver runtime holder

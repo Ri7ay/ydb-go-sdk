@@ -9,11 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
-	"google.golang.org/grpc"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 )
 
@@ -44,16 +41,12 @@ func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicre
 
 	require.NoError(t, err)
 
-	var connector topicreader.TopicSteamReaderConnect = func(ctx context.Context) (topicreader.RawTopicReaderStream, error) {
-		grpcConn := db.(grpc.ClientConnInterface)
-		pqClient := Ydb_PersQueue_V12.NewPersQueueServiceClient(grpcConn)
-		grpcStream, err := pqClient.StreamingRead(context.TODO())
-		return rawtopicreader.StreamReader{Stream: grpcStream}, err
-	}
-
-	return db, topicreader.NewReader(ctx, connector, "test", []topicreader.ReadSelector{
+	reader, err := db.Topic().StartRead("test", []topicreader.ReadSelector{
 		{
 			Stream: "/local/asd",
 		},
 	})
+	require.NoError(t, err)
+
+	return db, reader
 }

@@ -10,7 +10,6 @@ type Client interface {
 	Close(context.Context) error
 
 	StartRead(
-		connectionCtx context.Context,
 		consumer string,
 		readSelectors []topicreader.ReadSelector,
 		opts ...topicreader.ReaderOption,

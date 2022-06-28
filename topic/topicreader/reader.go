@@ -25,7 +25,9 @@ type RawTopicReaderStream interface {
 	CloseSend() error
 }
 
-type TopicSteamReaderConnect func(ctx context.Context) (RawTopicReaderStream, error)
+// TopicSteamReaderConnect connect to grpc stream
+// when connectionCtx closed stream must stop work and return errors for all methods
+type TopicSteamReaderConnect func(connectionCtx context.Context) (RawTopicReaderStream, error)
 
 type Reader struct {
 	reader             batchedStreamReader
@@ -48,7 +50,6 @@ func newReadMessageBatchOptions() readMessageBatchOptions {
 }
 
 func NewReader(
-	connectCtx context.Context,
 	connector TopicSteamReaderConnect,
 	consumer string,
 	readSelectors []ReadSelector,
@@ -65,7 +66,7 @@ func NewReader(
 	}
 
 	res := &Reader{
-		reader:             newReaderReconnector(connectCtx, readerConnector),
+		reader:             newReaderReconnector(readerConnector),
 		defaultBatchConfig: cfg.DefaultBatchConfig,
 	}
 	res.initChannels()
