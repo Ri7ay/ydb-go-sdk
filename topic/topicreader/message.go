@@ -18,13 +18,6 @@ var (
 	ErrContextExplicitCancelled = errors.New("context explicit cancelled")
 )
 
-type SizeReader interface {
-	// Важная часть чтобы можно было экономить память на байтиках.
-	// За счет этого можно прочитанные сообщения лениво разжимать, а отправляемые при желании лениво формировать
-	io.Reader
-	Len() int
-}
-
 type Message struct {
 	commitRange
 
@@ -48,26 +41,25 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-func createReader(codec rawtopic.Codec, rawBytes []byte) io.Reader {
+func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64) sizeReader {
+	var reader io.Reader
 	switch codec {
 	case rawtopic.CodecRaw:
-		return bytes.NewReader(rawBytes)
+		reader = bytes.NewReader(rawBytes)
 	case rawtopic.CodecGzip:
 		gzipReader, err := gzip.NewReader(bytes.NewReader(rawBytes))
-		if err != nil {
-			return errorReader{err: xerrors.WithStackTrace(fmt.Errorf("failed read gzip message: %w", err))}
+		if err == nil {
+			reader = gzipReader
+		} else {
+			reader = errorReader{err: xerrors.WithStackTrace(fmt.Errorf("failed read gzip message: %w", err))}
 		}
-
-		gzipReader2, _ := gzip.NewReader(bytes.NewReader(rawBytes))
-		content, _ := io.ReadAll(gzipReader2)
-		contentS := string(content)
-		_ = contentS
-		return gzipReader
 	default:
-		return errorReader{
+		reader = errorReader{
 			err: xerrors.WithStackTrace(fmt.Errorf("received message with codec '%v': %w", codec, ErrUnexpectedCodec)),
 		}
 	}
+
+	return sizeReader{reader: reader, size: int(uncompressedSize)}
 }
 
 type errorReader struct {
