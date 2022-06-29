@@ -46,9 +46,9 @@ func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicre
 	token := os.Getenv("YDB_TOKEN")
 
 	connectionString := "grpc://localhost:2136?database=/local"
-	//if ecs := os.Getenv("YDB_CONNECTION_STRING"); ecs != "" {
-	//	connectionString = ecs
-	//}
+	if ecs := os.Getenv("YDB_CONNECTION_STRING"); ecs != "" {
+		connectionString = ecs
+	}
 
 	params, err := url.Parse(connectionString)
 	require.NoError(t, err)
@@ -87,8 +87,8 @@ WITH (
 
 	reader, err := db.Topic().StartRead("test", []topicreader.ReadSelector{
 		{
-			// Stream: scheme.Path(database + "/test/feed2"),
-			Stream: scheme.Path(database + "/asd"),
+			Stream: scheme.Path(database + "/test/feed"),
+			// Stream: scheme.Path(database + "/asd"),
 		},
 	})
 	require.NoError(t, err)

@@ -26,7 +26,7 @@ func (c *Client) AlterTopic(ctx context.Context, req rawtopic.AlterTopicRequest)
 }
 
 func (c *Client) StreamRead(ctxLifeTime context.Context) (rawtopicreader.StreamReader, error) {
-	protoResp, err := c.Service.StreamingRead(ctxLifeTime)
+	protoResp, err := c.Service.MigrationStreamingRead(ctxLifeTime)
 	if err != nil {
 		return rawtopicreader.StreamReader{}, xerrors.WithStackTrace(err)
 	}

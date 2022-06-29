@@ -477,10 +477,13 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 	var batches []Batch
 	for pIndex := range mess.PartitionData {
 		p := &mess.PartitionData[pIndex]
-		session, err := r.sessionController.Get(p.PartitionSessionID)
+
+		// TODO: Migration workaround, switch to Get
+		session, err := r.sessionController.GetByPartitionID(p.PartitionSessionID)
 		if err != nil {
 			return err
 		}
+		p.PartitionSessionID = session.partitionSessionID
 
 		for bIndex := range p.Batches {
 			if r.ctx.Err() != nil {
@@ -586,6 +589,8 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 
 	respMessage := &rawtopicreader.StartPartitionSessionResponse{
 		PartitionSessionID: session.partitionSessionID,
+		Topic:              session.Topic,
+		PartitionID:        uint64(session.PartitionID),
 	}
 
 	var forceOffset *int64

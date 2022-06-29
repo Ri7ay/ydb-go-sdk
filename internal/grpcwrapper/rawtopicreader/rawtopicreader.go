@@ -78,8 +78,8 @@ type StreamReader struct {
 }
 
 type GrpcStream interface {
-	Send(messageNew *Ydb_PersQueue_V1.StreamingReadClientMessage) error
-	Recv() (*Ydb_PersQueue_V1.StreamingReadServerMessage, error)
+	Send(messageNew *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage) error
+	Recv() (*Ydb_PersQueue_V1.MigrationStreamingReadServerMessage, error)
 	CloseSend() error
 }
 
@@ -101,63 +101,63 @@ func (s StreamReader) Recv() (ServerMessage, error) {
 		return nil, xerrors.WithStackTrace(fmt.Errorf("bad status from pq server: %v", meta.Status))
 	}
 
-	switch m := grpcMess.ServerMessage.(type) {
-	case *Ydb_PersQueue_V1.StreamingReadServerMessage_InitResponse_:
+	switch m := grpcMess.Response.(type) {
+	case *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_InitResponse_:
 		resp := &InitResponse{}
 		resp.ServerMessageMetadata = meta
 		resp.fromProto(m.InitResponse)
 		return resp, nil
-	case *Ydb_PersQueue_V1.StreamingReadServerMessage_StartPartitionSessionRequest_:
+	case *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Assigned_:
 		resp := &StartPartitionSessionRequest{}
 		resp.ServerMessageMetadata = meta
-		resp.fromProto(m.StartPartitionSessionRequest)
+		resp.fromProto(m.Assigned)
 		return resp, nil
-	case *Ydb_PersQueue_V1.StreamingReadServerMessage_ReadResponse_:
+	case *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_DataBatch_:
 		resp := &ReadResponse{}
 		resp.ServerMessageMetadata = meta
-		if err = resp.fromProto(m.ReadResponse); err != nil {
+		if err = resp.fromProto(m.DataBatch); err != nil {
 			return nil, err
 		}
 		return resp, nil
-	case *Ydb_PersQueue_V1.StreamingReadServerMessage_StopPartitionSessionRequest_:
+	case *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Release_:
 		req := &StopPartitionSessionRequest{}
 		req.ServerMessageMetadata = meta
-		if err = req.fromProto(m.StopPartitionSessionRequest); err != nil {
+		if err = req.fromProto(m.Release); err != nil {
 			return nil, err
 		}
 		return req, nil
-	case *Ydb_PersQueue_V1.StreamingReadServerMessage_CommitResponse_:
+	case *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Committed_:
 		resp := &CommitOffsetResponse{}
 		resp.ServerMessageMetadata = meta
-		if err = resp.fromProto(m.CommitResponse); err != nil {
+		if err = resp.fromProto(m.Committed); err != nil {
 			return nil, err
 		}
 		return resp, nil
 	}
 
-	panic(fmt.Errorf("not implemented: %#v", grpcMess.ServerMessage))
+	panic(fmt.Errorf("not implemented: %#v", grpcMess.Response))
 }
 
 func (s StreamReader) Send(mess ClientMessage) error {
 	switch m := mess.(type) {
 	case *InitRequest:
-		grpcMess := &Ydb_PersQueue_V1.StreamingReadClientMessage{
-			ClientMessage: &Ydb_PersQueue_V1.StreamingReadClientMessage_InitRequest_{InitRequest: m.toProto()},
+		grpcMess := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage{
+			Request: &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_InitRequest_{InitRequest: m.toProto()},
 		}
 		return s.Stream.Send(grpcMess)
 	case *ReadRequest:
-		grpcMess := &Ydb_PersQueue_V1.StreamingReadClientMessage{
-			ClientMessage: &Ydb_PersQueue_V1.StreamingReadClientMessage_ReadRequest_{ReadRequest: m.toProto()},
+		grpcMess := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage{
+			Request: &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Read_{Read: m.toProto()},
 		}
 		return s.Stream.Send(grpcMess)
 	case *StartPartitionSessionResponse:
-		grpcMess := &Ydb_PersQueue_V1.StreamingReadClientMessage{
-			ClientMessage: &Ydb_PersQueue_V1.StreamingReadClientMessage_StartPartitionSessionResponse_{StartPartitionSessionResponse: m.toProto()},
+		grpcMess := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage{
+			Request: &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_StartRead_{StartRead: m.toProto()},
 		}
 		return s.Stream.Send(grpcMess)
 	case *CommitOffsetRequest:
-		grpcMess := &Ydb_PersQueue_V1.StreamingReadClientMessage{
-			ClientMessage: &Ydb_PersQueue_V1.StreamingReadClientMessage_CommitRequest_{CommitRequest: m.toProto()},
+		grpcMess := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage{
+			Request: &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Commit_{Commit: m.toProto()},
 		}
 		return s.Stream.Send(grpcMess)
 	default:
@@ -184,7 +184,7 @@ type ServerMessageMetadata struct {
 	Issues rawydb.Issues
 }
 
-func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage) error {
+func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage) error {
 	if err := m.Status.FromProto(p.Status); err != nil {
 		return err
 	}
@@ -239,18 +239,17 @@ type InitRequest struct {
 	Consumer string
 }
 
-func (g *InitRequest) toProto() *Ydb_PersQueue_V1.StreamingReadClientMessage_InitRequest {
-	p := &Ydb_PersQueue_V1.StreamingReadClientMessage_InitRequest{
-		TopicsReadSettings:        nil,
-		Consumer:                  g.Consumer,
-		MaxSupportedFormatVersion: 0,
-		MaxMetaCacheSize:          1024 * 1024 * 1024, // TODO: fix
-		IdleTimeoutMs:             (time.Second * 15).Milliseconds(),
+func (g *InitRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_InitRequest {
+	p := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_InitRequest{
+		TopicsReadSettings: nil,
+		Consumer:           g.Consumer,
+		MaxMetaCacheSize:   1024 * 1024 * 1024, // TODO: fix
+		IdleTimeoutMs:      (time.Second * 15).Milliseconds(),
 	}
 
-	p.TopicsReadSettings = make([]*Ydb_PersQueue_V1.StreamingReadClientMessage_TopicReadSettings, 0, len(g.TopicsReadSettings))
+	p.TopicsReadSettings = make([]*Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_TopicReadSettings, 0, len(g.TopicsReadSettings))
 	for _, gSettings := range g.TopicsReadSettings {
-		pSettings := &Ydb_PersQueue_V1.StreamingReadClientMessage_TopicReadSettings{
+		pSettings := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_TopicReadSettings{
 			Topic: gSettings.Path,
 		}
 		pSettings.PartitionGroupIds = make([]int64, 0, len(gSettings.PartitionsID))
@@ -277,7 +276,7 @@ type InitResponse struct {
 	SessionID string
 }
 
-func (g *InitResponse) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_InitResponse) {
+func (g *InitResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_InitResponse) {
 	g.SessionID = p.SessionId
 }
 
@@ -291,10 +290,8 @@ type ReadRequest struct {
 	BytesSize int
 }
 
-func (r *ReadRequest) toProto() *Ydb_PersQueue_V1.StreamingReadClientMessage_ReadRequest {
-	return &Ydb_PersQueue_V1.StreamingReadClientMessage_ReadRequest{
-		RequestUncompressedSize: int64(r.BytesSize),
-	}
+func (r *ReadRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Read {
+	return &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Read{}
 }
 
 type ReadResponse struct {
@@ -305,7 +302,7 @@ type ReadResponse struct {
 	PartitionData []PartitionData
 }
 
-func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_ReadResponse) error {
+func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_DataBatch) error {
 	r.PartitionData = make([]PartitionData, len(p.PartitionData))
 	for partitionIndex := range p.PartitionData {
 		dstPartition := &r.PartitionData[partitionIndex]
@@ -314,7 +311,7 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_
 			return xerrors.WithStackTrace(fmt.Errorf("unexpected nil partition data"))
 		}
 
-		dstPartition.PartitionSessionID.FromInt64(srcPartition.PartitionSessionId)
+		dstPartition.PartitionSessionID.FromInt64(int64(srcPartition.Partition))
 		dstPartition.Batches = make([]Batch, len(srcPartition.Batches))
 
 		for batchIndex := range srcPartition.Batches {
@@ -324,14 +321,12 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_
 				return xerrors.WithStackTrace(fmt.Errorf("unexpected nil batch"))
 			}
 
-			dstBatch.MessageGroupID = string(srcBatch.MessageGroupId)
-			dstBatch.WrittenAt = time.UnixMilli(srcBatch.WriteTimestampMs)
+			dstBatch.MessageGroupID = string(srcBatch.SourceId)
+			dstBatch.WrittenAt = time.UnixMilli(int64(srcBatch.WriteTimestampMs))
 
-			if srcMeta := srcBatch.GetSessionMeta().GetValue(); len(srcMeta) > 0 {
-				dstBatch.WriteSessionMeta = make(map[string]string, len(srcMeta))
-				for key, val := range srcMeta {
-					dstBatch.WriteSessionMeta[key] = val
-				}
+			dstBatch.WriteSessionMeta = make(map[string]string, len(srcBatch.ExtraFields))
+			for _, keyValue := range srcBatch.ExtraFields {
+				dstBatch.WriteSessionMeta[keyValue.GetKey()] = keyValue.Value
 			}
 
 			dstBatch.MessageData = make([]MessageData, len(srcBatch.MessageData))
@@ -342,11 +337,11 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_
 					return xerrors.WithStackTrace(fmt.Errorf("unexpected nil message"))
 				}
 
-				dstMess.Offset.FromInt64(srcMess.Offset)
-				dstMess.SeqNo = srcMess.SeqNo
-				dstMess.CreatedAt = time.UnixMilli(srcMess.CreateTimestampMs)
+				dstMess.Offset.FromInt64(int64(srcMess.Offset))
+				dstMess.SeqNo = int64(srcMess.SeqNo)
+				dstMess.CreatedAt = time.UnixMilli(int64(srcMess.CreateTimestampMs))
 				dstMess.Data = srcMess.Data
-				dstMess.UncompressedSize = srcMess.UncompressedSize
+				dstMess.UncompressedSize = int64(srcMess.UncompressedSize)
 				// TODO: dstMess.MessageGroupID
 				dstBatch.Codec.FromProto(srcMess.Codec) // TODO: move to batch level
 			}
@@ -389,24 +384,20 @@ type CommitOffsetRequest struct {
 	CommitOffsets []PartitionCommitOffset
 }
 
-func (r *CommitOffsetRequest) toProto() *Ydb_PersQueue_V1.StreamingReadClientMessage_CommitRequest {
-	res := &Ydb_PersQueue_V1.StreamingReadClientMessage_CommitRequest{}
-	res.Commits = make([]*Ydb_PersQueue_V1.StreamingReadClientMessage_PartitionCommit, len(r.CommitOffsets))
+func (r *CommitOffsetRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Commit {
+	res := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Commit{}
 
 	for partitionIndex := range r.CommitOffsets {
 		partition := &r.CommitOffsets[partitionIndex]
 
-		grpcPartition := &Ydb_PersQueue_V1.StreamingReadClientMessage_PartitionCommit{}
-		res.Commits[partitionIndex] = grpcPartition
-		grpcPartition.PartitionSessionId = partition.PartitionSessionID.ToInt64()
-		grpcPartition.Offsets = make([]*Ydb_PersQueue_V1.OffsetsRange, len(partition.Offsets))
-
 		for offsetIndex := range partition.Offsets {
 			offset := partition.Offsets[offsetIndex]
-			grpcPartition.Offsets[offsetIndex] = &Ydb_PersQueue_V1.OffsetsRange{
-				StartOffset: offset.Start.ToInt64(),
-				EndOffset:   offset.End.ToInt64(),
-			}
+
+			grpcOffset := &Ydb_PersQueue_V1.CommitOffsetRange{}
+			grpcOffset.AssignId = uint64(partition.PartitionSessionID)
+			grpcOffset.StartOffset = uint64(offset.Start.ToInt64())
+			grpcOffset.EndOffset = uint64(offset.End.ToInt64())
+			res.OffsetRanges = append(res.OffsetRanges, grpcOffset)
 		}
 	}
 	return res
@@ -429,17 +420,17 @@ type CommitOffsetResponse struct {
 	PartitionsCommittedOffsets []PartitionCommittedOffset
 }
 
-func (r *CommitOffsetResponse) fromProto(response *Ydb_PersQueue_V1.StreamingReadServerMessage_CommitResponse) error {
-	r.PartitionsCommittedOffsets = make([]PartitionCommittedOffset, len(response.PartitionsCommittedOffsets))
+func (r *CommitOffsetResponse) fromProto(response *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Committed) error {
+	r.PartitionsCommittedOffsets = make([]PartitionCommittedOffset, len(response.OffsetRanges))
 	for i := range r.PartitionsCommittedOffsets {
-		grpcCommited := response.PartitionsCommittedOffsets[i]
+		grpcCommited := response.OffsetRanges[i]
 		if grpcCommited == nil {
 			return xerrors.WithStackTrace(errors.New("unexpected nil while parse commit offset response"))
 		}
 
 		commited := &r.PartitionsCommittedOffsets[i]
-		commited.PartitionSessionID.FromInt64(grpcCommited.PartitionSessionId)
-		commited.CommittedOffset.FromInt64(grpcCommited.CommittedOffset)
+		commited.PartitionSessionID.FromInt64(int64(grpcCommited.AssignId))
+		commited.CommittedOffset.FromInt64(int64(grpcCommited.EndOffset))
 	}
 
 	return nil
@@ -481,11 +472,11 @@ type StartPartitionSessionRequest struct {
 	PartitionOffsets OffsetRange
 }
 
-func (r *StartPartitionSessionRequest) fromProto(p *Ydb_PersQueue_V1.StreamingReadServerMessage_StartPartitionSessionRequest) {
-	r.PartitionSession.PartitionID = p.PartitionSession.PartitionId
-	r.PartitionSession.Path = p.PartitionSession.Topic
-	r.PartitionSession.PartitionSessionID.FromInt64(p.PartitionSession.PartitionSessionId)
-	r.CommittedOffset.FromInt64(p.CommittedOffset)
+func (r *StartPartitionSessionRequest) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Assigned) {
+	r.PartitionSession.PartitionID = int64(p.Partition)
+	r.PartitionSession.Path = p.Topic.Path
+	r.PartitionSession.PartitionSessionID.FromInt64(int64(p.AssignId))
+	r.CommittedOffset.FromInt64(int64(p.EndOffset))
 	// TODO: PartitionOffsets
 }
 
@@ -501,17 +492,25 @@ type StartPartitionSessionResponse struct {
 	PartitionSessionID PartitionSessionID
 	ReadOffset         OptionalOffset
 	CommitOffset       OptionalOffset
+
+	// Deprecated
+	Topic string
+
+	// Deprecated
+	PartitionID uint64
 }
 
-func (r *StartPartitionSessionResponse) toProto() *Ydb_PersQueue_V1.StreamingReadClientMessage_StartPartitionSessionResponse {
-	res := &Ydb_PersQueue_V1.StreamingReadClientMessage_StartPartitionSessionResponse{
-		PartitionSessionId: r.PartitionSessionID.ToInt64(),
+func (r *StartPartitionSessionResponse) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_StartRead {
+	res := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_StartRead{
+		Topic:     &Ydb_PersQueue_V1.Path{Path: r.Topic},
+		Partition: r.PartitionID,
+		AssignId:  uint64(r.PartitionSessionID),
 	}
 	if r.ReadOffset.HasValue {
-		res.ReadOffset = r.ReadOffset.ToInt64()
+		res.ReadOffset = uint64(r.ReadOffset.ToInt64())
 	}
 	if r.CommitOffset.HasValue {
-		res.CommitOffset = r.CommitOffset.ToInt64()
+		res.CommitOffset = uint64(r.CommitOffset.ToInt64())
 	}
 	return res
 }
@@ -529,13 +528,13 @@ type StopPartitionSessionRequest struct {
 	CommittedOffset    Offset
 }
 
-func (r *StopPartitionSessionRequest) fromProto(request *Ydb_PersQueue_V1.StreamingReadServerMessage_StopPartitionSessionRequest) error {
+func (r *StopPartitionSessionRequest) fromProto(request *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Release) error {
 	if request == nil {
 		return xerrors.NewWithIssues("ydb: unexpected grpc nil stop partition session request")
 	}
-	r.PartitionSessionID.FromInt64(request.PartitionSessionId)
-	r.Graceful = request.Graceful
-	r.CommittedOffset.FromInt64(request.CommittedOffset)
+	r.PartitionSessionID.FromInt64(int64(request.AssignId))
+	r.Graceful = !request.ForcefulRelease
+	r.CommittedOffset.FromInt64(int64(request.CommitOffset))
 	return nil
 }
 
