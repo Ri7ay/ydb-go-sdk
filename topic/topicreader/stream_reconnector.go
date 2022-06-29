@@ -196,7 +196,11 @@ func connectWithTimeout(baseContext context.Context, connector readerConnectFunc
 		// pass
 	}
 
-	return res.stream, res.err
+	if res.err == nil {
+		return res.stream, nil
+	}
+
+	return nil, res.err
 }
 
 func (r *readerReconnector) fireReconnectOnRetryableError(stream batchedStreamReader, err error) {

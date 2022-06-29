@@ -6,6 +6,8 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"google.golang.org/grpc"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicclient"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
@@ -16,19 +18,12 @@ import (
 // var _ persqueue.Client = &Client{}
 
 type Client struct {
-	rawClient rawtopic.Client
-
-	topicsPrefix string
-}
-
-type Connector interface {
-	grpc.ClientConnInterface
-	Name() string
+	rawClient rawtopicclient.Client
 }
 
 func New(cc grpc.ClientConnInterface) *Client {
 	service := Ydb_PersQueue_V1.NewPersQueueServiceClient(cc)
-	return &Client{rawClient: rawtopic.Client{Service: service}}
+	return &Client{rawClient: rawtopicclient.Client{Service: service}}
 }
 
 func (c *Client) Close(_ context.Context) error {

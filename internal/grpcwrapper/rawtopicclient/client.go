@@ -1,9 +1,11 @@
-package rawtopic
+package rawtopicclient
 
 import (
 	"context"
 
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -13,11 +15,11 @@ type Client struct {
 	Service Ydb_PersQueue_V12.PersQueueServiceClient
 }
 
-func (c *Client) AlterTopic(ctx context.Context, req AlterTopicRequest) (resp AlterTopicResult, err error) {
+func (c *Client) AlterTopic(ctx context.Context, req rawtopic.AlterTopicRequest) (resp rawtopic.AlterTopicResult, err error) {
 	protoReq := req.ToProto()
 	protoResp, err := c.Service.AlterTopic(ctx, protoReq)
 	if err != nil {
-		return AlterTopicResult{}, err
+		return rawtopic.AlterTopicResult{}, err
 	}
 	err = resp.FromProto(protoResp)
 	return resp, err
