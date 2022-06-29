@@ -311,7 +311,8 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServe
 			return xerrors.WithStackTrace(fmt.Errorf("unexpected nil partition data"))
 		}
 
-		dstPartition.PartitionSessionID.FromInt64(int64(srcPartition.Partition))
+		dstPartition.PartitionSessionID.FromInt64(-1) // TODO: Migration protocol workaround
+		dstPartition.PartitionID = int64(srcPartition.Partition)
 		dstPartition.Batches = make([]Batch, len(srcPartition.Batches))
 
 		for batchIndex := range srcPartition.Batches {
@@ -352,6 +353,10 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServe
 
 type PartitionData struct {
 	PartitionSessionID PartitionSessionID
+
+	// PartitionID use for migration protocol only
+	// Deprecated
+	PartitionID int64
 
 	Batches []Batch
 }

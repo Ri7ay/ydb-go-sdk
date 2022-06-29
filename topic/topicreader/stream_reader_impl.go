@@ -478,12 +478,22 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 	for pIndex := range mess.PartitionData {
 		p := &mess.PartitionData[pIndex]
 
+		var session *partitionSession
+		var err error
 		// TODO: Migration workaround, switch to Get
-		session, err := r.sessionController.GetByPartitionID(p.PartitionSessionID)
+		// TODO: PartitionSessionID == -1 is migration workaround, need remove
+		if p.PartitionSessionID == -1 {
+			session, err = r.sessionController.GetByPartitionID(p.PartitionID)
+			if session != nil {
+				p.PartitionSessionID = session.partitionSessionID
+			}
+		} else {
+			// normal way
+			session, err = r.sessionController.Get(p.PartitionSessionID)
+		}
 		if err != nil {
 			return err
 		}
-		p.PartitionSessionID = session.partitionSessionID
 
 		for bIndex := range p.Batches {
 			if r.ctx.Err() != nil {

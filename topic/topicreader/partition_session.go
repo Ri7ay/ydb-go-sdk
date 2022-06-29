@@ -107,14 +107,14 @@ func (c *partitionSessionStorage) Get(id partitionSessionID) (*partitionSession,
 	return partition, nil
 }
 
-// GetByPartitionID use for migration workaround only
+// GetByPartitionIDOrSessionID use for migration workaround only
 // Deprecated
-func (c *partitionSessionStorage) GetByPartitionID(id partitionSessionID) (*partitionSession, error) {
+func (c *partitionSessionStorage) GetByPartitionID(id int64) (*partitionSession, error) {
 	c.m.RLock()
 	defer c.m.RLock()
 
 	for _, s := range c.sessions {
-		if s.PartitionID == id.ToInt64() {
+		if s.PartitionID == id {
 			return s, nil
 		}
 	}
