@@ -5,6 +5,7 @@ package topicreader_test
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"os"
 	"runtime/pprof"
@@ -36,6 +37,10 @@ func TestReaderWithLocalDB(t *testing.T) {
 	require.NotEmpty(t, mess.CreatedAt)
 	t.Logf("mess: %#v", mess)
 
+	content, err := io.ReadAll(mess.Data)
+	require.NoError(t, err)
+	t.Log("Content:", string(content))
+
 	batch, err := reader.ReadMessageBatch(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, batch.Messages)
@@ -57,7 +62,7 @@ func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicre
 	db, err := ydb.Open(ctx, connectionString, ydb.WithAccessTokenCredentials(token))
 	err = db.Table().Do(ctx, func(ctx context.Context, s table.Session) error {
 		return nil
-
+		// not supported yet
 		_ = s.ExecuteSchemeQuery(ctx, "DROP TABLE test")
 		err = s.ExecuteSchemeQuery(ctx, `
 CREATE TABLE
@@ -85,10 +90,14 @@ WITH (
 	})
 	require.NoError(t, err)
 
+	topicPath := scheme.Path(database + "/test/feed")
+	// topicPath := scheme.Path(database + "/asd")
+
+	require.NoError(t, err)
+
 	reader, err := db.Topic().StartRead("test", []topicreader.ReadSelector{
 		{
-			Stream: scheme.Path(database + "/test/feed"),
-			// Stream: scheme.Path(database + "/asd"),
+			Stream: topicPath,
 		},
 	})
 	require.NoError(t, err)
