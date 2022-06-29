@@ -49,7 +49,7 @@ func (r *AlterTopicResult) FromProto(proto *Ydb_PersQueue_V1.AlterTopicResponse)
 		return err
 	}
 	if !operation.Status.IsSuccess() {
-		return xerrors.WithStackTrace(fmt.Errorf("ydb: alter topic error: %v", operation.Issues))
+		return xerrors.WithStackTrace(fmt.Errorf("ydb: alter topic error[%v]: %v", operation.Status, operation.Issues))
 	}
 	return nil
 }

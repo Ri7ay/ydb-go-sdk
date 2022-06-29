@@ -94,7 +94,9 @@ func (s StreamReader) Recv() (ServerMessage, error) {
 	}
 
 	var meta ServerMessageMetadata
-	meta.metaFromProto(grpcMess)
+	if err = meta.metaFromProto(grpcMess); err != nil {
+		return nil, err
+	}
 	if !meta.Status.IsSuccess() {
 		return nil, xerrors.WithStackTrace(fmt.Errorf("bad status from pq server: %v", meta.Status))
 	}

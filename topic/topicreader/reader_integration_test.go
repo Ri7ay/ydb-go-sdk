@@ -5,10 +5,14 @@ package topicreader_test
 
 import (
 	"context"
+	"net/url"
+	"os"
 	"runtime/pprof"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
@@ -39,7 +43,18 @@ func TestReaderWithLocalDB(t *testing.T) {
 
 func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicreader.Reader) {
 	// TODO: Fix connection string to env
-	db, err := ydb.Open(ctx, "grpc://localhost:2136?database=/local")
+	token := os.Getenv("YDB_TOKEN")
+
+	connectionString := "grpc://localhost:2136?database=/local"
+	//if ecs := os.Getenv("YDB_CONNECTION_STRING"); ecs != "" {
+	//	connectionString = ecs
+	//}
+
+	params, err := url.Parse(connectionString)
+	require.NoError(t, err)
+	database := params.Query().Get("database")
+
+	db, err := ydb.Open(ctx, connectionString, ydb.WithAccessTokenCredentials(token))
 	err = db.Table().Do(ctx, func(ctx context.Context, s table.Session) error {
 		return nil
 
@@ -72,8 +87,8 @@ WITH (
 
 	reader, err := db.Topic().StartRead("test", []topicreader.ReadSelector{
 		{
-			// Stream: "/local/test/feed",
-			Stream: "/local/asd",
+			// Stream: scheme.Path(database + "/test/feed2"),
+			Stream: scheme.Path(database + "/asd"),
 		},
 	})
 	require.NoError(t, err)

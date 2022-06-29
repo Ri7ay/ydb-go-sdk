@@ -30,7 +30,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		reader := &readerReconnector{
 			streamVal: baseReader,
 		}
-		reader.initChannels()
+		reader.initChannelsAndClock()
 		res, err := reader.ReadMessageBatch(context.Background(), opts)
 		require.NoError(t, err)
 		require.Equal(t, batch, res)
@@ -58,7 +58,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			},
 			streamErr: errUnconnected,
 		}
-		reader.initChannels()
+		reader.initChannelsAndClock()
 		reader.background.Start("test-reconnectionLoop", reader.reconnectionLoop)
 
 		res, err := reader.ReadMessageBatch(context.Background(), opts)
@@ -97,7 +97,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 			},
 			streamErr: errUnconnected,
 		}
-		reader.initChannels()
+		reader.initChannelsAndClock()
 		reader.background.Start("test-reconnectionLoop", reader.reconnectionLoop)
 
 		res, err := reader.ReadMessageBatch(context.Background(), opts)
@@ -111,7 +111,7 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 
 		for i := 0; i < 100; i++ {
 			reconnector := &readerReconnector{}
-			reconnector.initChannels()
+			reconnector.initChannelsAndClock()
 
 			_, err := reconnector.ReadMessageBatch(cancelledCtx, readMessageBatchOptions{})
 			require.ErrorIs(t, err, context.Canceled)
@@ -146,7 +146,7 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 			require.Equal(t, expectedCommitRange, offset)
 		})
 		reconnector := &readerReconnector{streamVal: stream}
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 		require.NoError(t, reconnector.Commit(ctx, expectedCommitRange))
 	})
 	t.Run("StreamOkCommitErr", func(t *testing.T) {
@@ -157,22 +157,22 @@ func TestTopicReaderReconnectorCommit(t *testing.T) {
 			require.Equal(t, expectedCommitRange, offset)
 		}).Return(testErr)
 		reconnector := &readerReconnector{streamVal: stream}
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 		require.ErrorIs(t, reconnector.Commit(ctx, expectedCommitRange), testErr)
 	})
 	t.Run("StreamErr", func(t *testing.T) {
 		reconnector := &readerReconnector{streamErr: testErr}
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 		require.ErrorIs(t, reconnector.Commit(ctx, expectedCommitRange), testErr)
 	})
 	t.Run("CloseErr", func(t *testing.T) {
 		reconnector := &readerReconnector{closedErr: testErr}
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 		require.ErrorIs(t, reconnector.Commit(ctx, expectedCommitRange), testErr)
 	})
 	t.Run("StreamAndCloseErr", func(t *testing.T) {
 		reconnector := &readerReconnector{closedErr: testErr, streamErr: testErr2}
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 		require.ErrorIs(t, reconnector.Commit(ctx, expectedCommitRange), testErr)
 	})
 }
@@ -188,7 +188,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		newStream2.EXPECT().Close(gomock.Any(), gomock.Any())
 
 		reconnector := &readerReconnector{}
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 
 		stream1Ready := make(emptyChan)
 		stream2Ready := make(emptyChan)
@@ -246,7 +246,7 @@ func TestTopicReaderReconnectorStart(t *testing.T) {
 	ctx := context.Background()
 
 	reconnector := &readerReconnector{}
-	reconnector.initChannels()
+	reconnector.initChannelsAndClock()
 
 	stream := NewMockbatchedStreamReader(mc)
 	stream.EXPECT().Close(gomock.Any(), gomock.Any()).Do(func(_ context.Context, err error) {
@@ -277,7 +277,7 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 		reconnector := &readerReconnector{}
 
 		stream := NewMockbatchedStreamReader(mc)
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 
 		reconnector.fireReconnectOnRetryableError(stream, nil)
 		select {
@@ -306,7 +306,7 @@ func TestTopicReaderReconnectorFireReconnectOnRetryableError(t *testing.T) {
 
 		reconnector := &readerReconnector{}
 		stream := NewMockbatchedStreamReader(mc)
-		reconnector.initChannels()
+		reconnector.initChannelsAndClock()
 
 	fillChannel:
 		for {

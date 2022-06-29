@@ -23,4 +23,16 @@ func (c *Codec) FromProto(codec Ydb_PersQueue_V1.Codec) {
 	*c = Codec(codec)
 }
 
+func (c Codec) ToProto() Ydb_PersQueue_V1.Codec {
+	return Ydb_PersQueue_V1.Codec(c)
+}
+
 type SupportedCodecs []Codec
+
+func (c SupportedCodecs) ToProto() []Ydb_PersQueue_V1.Codec {
+	proto := make([]Ydb_PersQueue_V1.Codec, len(c))
+	for i := range c {
+		proto[i] = c[i].ToProto()
+	}
+	return proto
+}

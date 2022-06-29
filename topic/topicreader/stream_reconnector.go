@@ -49,7 +49,7 @@ func newReaderReconnector(connector readerConnectFunc) *readerReconnector {
 		streamErr:     errUnconnected,
 	}
 
-	res.initChannels()
+	res.initChannelsAndClock()
 	res.start()
 
 	return res
@@ -115,7 +115,10 @@ func (r *readerReconnector) start() {
 	r.reconnectFromBadStream <- nil
 }
 
-func (r *readerReconnector) initChannels() {
+func (r *readerReconnector) initChannelsAndClock() {
+	if r.clock == nil {
+		r.clock = clockwork.NewRealClock()
+	}
 	r.reconnectFromBadStream = make(chan batchedStreamReader, 1)
 	r.streamConnectionInProgress = make(emptyChan)
 	close(r.streamConnectionInProgress) // no progress at start
