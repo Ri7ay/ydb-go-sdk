@@ -41,7 +41,7 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64) sizeReader {
+func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64) *lenReader {
 	var reader io.Reader
 	switch codec {
 	case rawtopic.CodecRaw:
@@ -59,7 +59,7 @@ func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64)
 		}
 	}
 
-	return sizeReader{reader: reader, size: int(uncompressedSize)}
+	return &lenReader{reader: reader, len: int(uncompressedSize)}
 }
 
 type errorReader struct {

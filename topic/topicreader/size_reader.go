@@ -2,23 +2,22 @@ package topicreader
 
 import "io"
 
-type SizeReader interface {
+type LenReader interface {
 	io.Reader
-
-	// Size return full uncompressed size of data
-	// it is not changed while read data
-	Size() int
+	Len() int
 }
 
-type sizeReader struct {
-	size   int
+type lenReader struct {
+	len    int
 	reader io.Reader
 }
 
-func (s sizeReader) Read(p []byte) (n int, err error) {
-	return s.reader.Read(p)
+func (s *lenReader) Read(p []byte) (n int, err error) {
+	n, err = s.reader.Read(p)
+	s.len -= n
+	return n, err
 }
 
-func (s sizeReader) Size() int {
-	return s.size
+func (s *lenReader) Size() int {
+	return s.len
 }
