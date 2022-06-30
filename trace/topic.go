@@ -7,9 +7,9 @@ import "context"
 //go:generate gtrace
 
 type (
-	// TopicReader specified trace of topic reader client activity.
+	// Topic specified trace of topic reader client activity.
 	// gtrace:gen
-	TopicReader struct {
+	Topic struct {
 		OnPartitionReadStart       func(OnPartitionReadStartInfo)
 		OnPartitionReadStop        func(info OnPartitionReadStopInfo)
 		OnPartitionCommittedNotify func(OnPartitionCommittedInfo)

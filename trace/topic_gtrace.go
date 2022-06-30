@@ -6,24 +6,24 @@ import (
 	"context"
 )
 
-// topicReaderComposeOptions is a holder of options
-type topicReaderComposeOptions struct {
+// topicComposeOptions is a holder of options
+type topicComposeOptions struct {
 	panicCallback func(e interface{})
 }
 
-// TopicReaderOption specified TopicReader compose option
-type TopicReaderComposeOption func(o *topicReaderComposeOptions)
+// TopicOption specified Topic compose option
+type TopicComposeOption func(o *topicComposeOptions)
 
-// WithTopicReaderPanicCallback specified behavior on panic
-func WithTopicReaderPanicCallback(cb func(e interface{})) TopicReaderComposeOption {
-	return func(o *topicReaderComposeOptions) {
+// WithTopicPanicCallback specified behavior on panic
+func WithTopicPanicCallback(cb func(e interface{})) TopicComposeOption {
+	return func(o *topicComposeOptions) {
 		o.panicCallback = cb
 	}
 }
 
-// Compose returns a new TopicReader which has functional fields composed both from t and x.
-func (t TopicReader) Compose(x TopicReader, opts ...TopicReaderComposeOption) (ret TopicReader) {
-	options := topicReaderComposeOptions{}
+// Compose returns a new Topic which has functional fields composed both from t and x.
+func (t Topic) Compose(x Topic, opts ...TopicComposeOption) (ret Topic) {
+	options := topicComposeOptions{}
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -86,28 +86,28 @@ func (t TopicReader) Compose(x TopicReader, opts ...TopicReaderComposeOption) (r
 	}
 	return ret
 }
-func (t TopicReader) onPartitionReadStart(o OnPartitionReadStartInfo) {
+func (t Topic) onPartitionReadStart(o OnPartitionReadStartInfo) {
 	fn := t.OnPartitionReadStart
 	if fn == nil {
 		return
 	}
 	fn(o)
 }
-func (t TopicReader) onPartitionReadStop(info OnPartitionReadStopInfo) {
+func (t Topic) onPartitionReadStop(info OnPartitionReadStopInfo) {
 	fn := t.OnPartitionReadStop
 	if fn == nil {
 		return
 	}
 	fn(info)
 }
-func (t TopicReader) onPartitionCommittedNotify(o OnPartitionCommittedInfo) {
+func (t Topic) onPartitionCommittedNotify(o OnPartitionCommittedInfo) {
 	fn := t.OnPartitionCommittedNotify
 	if fn == nil {
 		return
 	}
 	fn(o)
 }
-func TopicReaderOnPartitionReadStart(t TopicReader, partitionContext context.Context, topic string, partitionID int64, readOffset *int64, commitOffset *int64) {
+func TopicOnPartitionReadStart(t Topic, partitionContext context.Context, topic string, partitionID int64, readOffset *int64, commitOffset *int64) {
 	var p OnPartitionReadStartInfo
 	p.PartitionContext = partitionContext
 	p.Topic = topic
@@ -116,7 +116,7 @@ func TopicReaderOnPartitionReadStart(t TopicReader, partitionContext context.Con
 	p.CommitOffset = commitOffset
 	t.onPartitionReadStart(p)
 }
-func TopicReaderOnPartitionReadStop(t TopicReader, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, committedOffset int64, graceful bool) {
+func TopicOnPartitionReadStop(t Topic, partitionContext context.Context, topic string, partitionID int64, partitionSessionID int64, committedOffset int64, graceful bool) {
 	var p OnPartitionReadStopInfo
 	p.PartitionContext = partitionContext
 	p.Topic = topic
@@ -126,7 +126,7 @@ func TopicReaderOnPartitionReadStop(t TopicReader, partitionContext context.Cont
 	p.Graceful = graceful
 	t.onPartitionReadStop(p)
 }
-func TopicReaderOnPartitionCommittedNotify(t TopicReader, topic string, partitionID int64, committedOffset int64) {
+func TopicOnPartitionCommittedNotify(t Topic, topic string, partitionID int64, committedOffset int64) {
 	var p OnPartitionCommittedInfo
 	p.Topic = topic
 	p.PartitionID = partitionID

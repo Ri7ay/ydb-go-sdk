@@ -68,9 +68,8 @@ func (offset OptionalOffset) ToOffsetPointer() *Offset {
 	if offset.HasValue {
 		v := offset.Offset
 		return &v
-	} else {
-		return nil
 	}
+	return nil
 }
 
 type StreamReader struct {
@@ -323,7 +322,7 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServe
 			}
 
 			dstBatch.MessageGroupID = string(srcBatch.SourceId)
-			dstBatch.WrittenAt = time.UnixMilli(int64(srcBatch.WriteTimestampMs))
+			dstBatch.WrittenAt = unixMilli(int64(srcBatch.WriteTimestampMs))
 
 			dstBatch.WriteSessionMeta = make(map[string]string, len(srcBatch.ExtraFields))
 			for _, keyValue := range srcBatch.ExtraFields {
@@ -340,7 +339,7 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServe
 
 				dstMess.Offset.FromInt64(int64(srcMess.Offset))
 				dstMess.SeqNo = int64(srcMess.SeqNo)
-				dstMess.CreatedAt = time.UnixMilli(int64(srcMess.CreateTimestampMs))
+				dstMess.CreatedAt = unixMilli(int64(srcMess.CreateTimestampMs))
 				dstMess.Data = srcMess.Data
 				dstMess.UncompressedSize = int64(srcMess.UncompressedSize)
 				// TODO: dstMess.MessageGroupID
@@ -547,4 +546,9 @@ type StopPartitionSessionResponse struct {
 	clientMessageImpl
 
 	PartitionSessionID PartitionSessionID
+}
+
+// unixMilli is copy from go 1.18 library for use with older golang version
+func unixMilli(msec int64) time.Time {
+	return time.Unix(msec/1e3, (msec%1e3)*1e6)
 }

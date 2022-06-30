@@ -122,7 +122,7 @@ func WithGetPartitionStartOffset(f GetPartitionStartOffsetFunc) ReaderOption {
 	}
 }
 
-func WithTracer(tracer trace.TopicReader) ReaderOption {
+func WithTracer(tracer trace.Topic) ReaderOption {
 	return func(cfg *readerConfig) {
 		cfg.Tracer = cfg.Tracer.Compose(tracer)
 	}

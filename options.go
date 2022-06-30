@@ -27,7 +27,6 @@ import (
 	schemeConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/scheme/config"
 	scriptingConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting/config"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
-	persqueueConfig "github.com/ydb-platform/ydb-go-sdk/v3/topic/config"
 )
 
 // Option contains configuration values for Connection
@@ -504,14 +503,6 @@ func WithTraceDiscovery(t trace.Discovery, opts ...trace.DiscoveryComposeOption)
 				)...,
 			),
 		)
-		return nil
-	}
-}
-
-// WithPersqueueCluster set explicit persqueue cluster
-func WithPersqueueCluster(name string) Option {
-	return func(_ context.Context, c *connection) error {
-		c.persqueueOptions = append(c.persqueueOptions, persqueueConfig.WithCluster(name))
 		return nil
 	}
 }

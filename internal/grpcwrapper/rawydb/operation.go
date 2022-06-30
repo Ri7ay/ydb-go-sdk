@@ -15,8 +15,5 @@ func (o *Operation) FromProto(proto *Ydb_Operations.Operation) error {
 	if err := o.Status.FromProto(proto.GetStatus()); err != nil {
 		return err
 	}
-	if err := o.Issues.FromProto(proto.Issues); err != nil {
-		return err
-	}
-	return nil
+	return o.Issues.FromProto(proto.Issues)
 }

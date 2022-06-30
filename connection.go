@@ -8,6 +8,8 @@ import (
 
 	"google.golang.org/grpc"
 
+	topicConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/config"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3/coordination"
 	"github.com/ydb-platform/ydb-go-sdk/v3/discovery"
@@ -24,7 +26,7 @@ import (
 	scriptingConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/scripting/config"
 	internalTable "github.com/ydb-platform/ydb-go-sdk/v3/internal/table"
 	tableConfig "github.com/ydb-platform/ydb-go-sdk/v3/internal/table/config"
-	internalTopicStream "github.com/ydb-platform/ydb-go-sdk/v3/internal/topicstream"
+	internalTopicStream "github.com/ydb-platform/ydb-go-sdk/v3/internal/topic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 	"github.com/ydb-platform/ydb-go-sdk/v3/log"
@@ -34,8 +36,6 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
-
-	persqueueConfig "github.com/ydb-platform/ydb-go-sdk/v3/topic/config"
 )
 
 // Connection interface provide access to YDB service clients
@@ -110,9 +110,9 @@ type connection struct {
 	ratelimiter        *internalRatelimiter.Client
 	ratelimiterOptions []ratelimiterConfig.Option
 
-	topicOnce        sync.Once
-	topic            *internalTopicStream.Client
-	persqueueOptions []persqueueConfig.Option
+	topicOnce    sync.Once
+	topic        *internalTopicStream.Client
+	topicOptions []topicConfig.Option
 
 	pool *conn.Pool
 
@@ -349,7 +349,7 @@ func (c *connection) Scripting() scripting.Client {
 
 func (c *connection) Topic() topic.Client {
 	c.topicOnce.Do(func() {
-		c.topic = internalTopicStream.New(c.balancer)
+		c.topic = internalTopicStream.New(c.balancer, c.topicOptions...)
 	})
 	return c.topic
 }

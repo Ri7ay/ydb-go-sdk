@@ -56,7 +56,7 @@ type topicStreamReaderConfig struct {
 	CredUpdateInterval              time.Duration
 	Consumer                        string
 	ReadSelectors                   []ReadSelector
-	Tracer                          trace.TopicReader
+	Tracer                          trace.Topic
 	GetPartitionStartOffsetCallback GetPartitionStartOffsetFunc
 	CommitMode                      CommitMode
 }
@@ -228,7 +228,7 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
 		return err
 	}
 
-	trace.TopicReaderOnPartitionReadStop(
+	trace.TopicOnPartitionReadStop(
 		r.cfg.Tracer,
 		session.Context(),
 		session.Topic,
@@ -627,7 +627,7 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 		return err
 	}
 
-	trace.TopicReaderOnPartitionReadStart(
+	trace.TopicOnPartitionReadStart(
 		r.cfg.Tracer,
 		session.Context(),
 		session.Topic,
