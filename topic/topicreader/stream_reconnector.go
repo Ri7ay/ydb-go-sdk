@@ -17,10 +17,7 @@ import (
 )
 
 const (
-	// TODO: improve
-	reconnectDuration      = time.Second * 60
-	streamPollingInterval  = time.Second / 10
-	forceReconnectInterval = time.Hour * 24 * 365 * 100 // never
+	reconnectDuration = time.Second * 60
 )
 
 type readerConnectFunc func(ctx context.Context) (batchedStreamReader, error)

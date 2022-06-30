@@ -18,6 +18,11 @@ var (
 	ErrContextExplicitCancelled = errors.New("context explicit cancelled")
 )
 
+type LenReader interface {
+	io.Reader
+	Len() int
+}
+
 type Message struct {
 	commitRange
 
@@ -27,7 +32,7 @@ type Message struct {
 	WriteSessionMetadata map[string]string
 	Offset               int64
 	WrittenAt            time.Time
-	Data                 io.Reader
+	Data                 LenReader
 
 	rawDataLen         int
 	bufferBytesAccount int
@@ -41,11 +46,15 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64) *lenReader {
+func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64) *oneTimeReader {
 	var reader io.Reader
 	switch codec {
 	case rawtopic.CodecRaw:
 		reader = bytes.NewReader(rawBytes)
+		if uncompressedSize == 0 {
+			// TODO: Migration protocol workaround
+			uncompressedSize = int64(len(rawBytes))
+		}
 	case rawtopic.CodecGzip:
 		gzipReader, err := gzip.NewReader(bytes.NewReader(rawBytes))
 		if err == nil {
@@ -59,7 +68,7 @@ func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64)
 		}
 	}
 
-	return &lenReader{reader: reader, len: int(uncompressedSize)}
+	return &oneTimeReader{reader: reader, len: int(uncompressedSize)}
 }
 
 type errorReader struct {
