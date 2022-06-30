@@ -1,42 +1,37 @@
 package rawtopic
 
 import (
-	"fmt"
-
-	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
 type CreateTopicRequest struct {
+	OperationParams rawydb.OperationParams
+
 	Path            string
 	SupportedCodecs SupportedCodecs
 	Consumers       []Consumer
 }
 
-func (req *CreateTopicRequest) ToProto() *Ydb_PersQueue_V1.CreateTopicRequest {
-	topicSettings := &Ydb_PersQueue_V1.TopicSettings{
+func (req *CreateTopicRequest) ToProto() *Ydb_Topic.CreateTopicRequest {
+	proto := &Ydb_Topic.CreateTopicRequest{
+		Path:            req.Path,
 		SupportedCodecs: req.SupportedCodecs.ToProto(),
 	}
 
-	proto := &Ydb_PersQueue_V1.CreateTopicRequest{
-		Path:     req.Path,
-		Settings: topicSettings,
+	proto.Consumers = make([]*Ydb_Topic.Consumer, len(req.Consumers))
+	for i := range proto.Consumers {
+		proto.Consumers[i] = req.Consumers[i].ToProto()
 	}
+
 	return proto
 }
 
-type CreateTopicResult struct{}
+type CreateTopicResult struct {
+	Operation rawydb.Operation
+}
 
-func (r *CreateTopicResult) FromProto(proto *Ydb_PersQueue_V1.CreateTopicResponse) error {
-	var operation rawydb.Operation
-	if err := operation.FromProto(proto.Operation); err != nil {
-		return err
-	}
-	if !operation.Status.IsSuccess() {
-		return xerrors.WithStackTrace(fmt.Errorf("ydb: create topic error [%v]: %v", operation.Status, operation.Issues))
-	}
-
-	return nil
+func (r *CreateTopicResult) FromProto(proto *Ydb_Topic.CreateTopicResponse) error {
+	return r.Operation.FromProtoWithStatusCheck(proto.Operation)
 }

@@ -1,6 +1,12 @@
 package rawydb
 
-import "github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Operations"
+import (
+	"fmt"
+
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Operations"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
+)
 
 type Operation struct {
 	ID     string
@@ -16,4 +22,18 @@ func (o *Operation) FromProto(proto *Ydb_Operations.Operation) error {
 		return err
 	}
 	return o.Issues.FromProto(proto.Issues)
+}
+
+func (o *Operation) OperationStatusToError() error {
+	if !o.Status.IsSuccess() {
+		return xerrors.WithStackTrace(fmt.Errorf("ydb: create topic error [%v]: %v", o.Status, o.Issues))
+	}
+	return nil
+}
+
+func (o *Operation) FromProtoWithStatusCheck(proto *Ydb_Operations.Operation) error {
+	if err := o.FromProto(proto); err != nil {
+		return err
+	}
+	return o.OperationStatusToError()
 }

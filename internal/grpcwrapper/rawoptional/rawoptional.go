@@ -19,6 +19,17 @@ func (v *OptionalTime) ToProto() *timestamppb.Timestamp {
 	return nil
 }
 
+func (v *OptionalTime) MustFromProto(proto *timestamppb.Timestamp) {
+	if proto == nil {
+		v.Value = time.Time{}
+		v.HasValue = false
+		return
+	}
+
+	v.HasValue = true
+	v.Value = proto.AsTime()
+}
+
 type OptionalDuration struct {
 	Value    time.Duration
 	HasValue bool

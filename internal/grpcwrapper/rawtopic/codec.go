@@ -1,6 +1,9 @@
 package rawtopic
 
-import "github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+import (
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
+)
 
 type Codec int
 
@@ -19,20 +22,30 @@ func (c Codec) IsCustomerCodec() bool {
 	return c >= CodecCustomerFirst && c <= CodecCustomerLast
 }
 
-func (c *Codec) FromProto(codec Ydb_PersQueue_V1.Codec) {
+func (c *Codec) MustFromProto(codec Ydb_Topic.Codec) {
 	*c = Codec(codec)
 }
 
-func (c Codec) ToProto() Ydb_PersQueue_V1.Codec {
-	return Ydb_PersQueue_V1.Codec(c)
+func (c Codec) ToProto() Ydb_Topic.Codec {
+	return Ydb_Topic.Codec(c)
 }
 
 type SupportedCodecs []Codec
 
-func (c SupportedCodecs) ToProto() []Ydb_PersQueue_V1.Codec {
-	proto := make([]Ydb_PersQueue_V1.Codec, len(c))
+func (c SupportedCodecs) ToProto() *Ydb_Topic.SupportedCodecs {
+	proto := &Ydb_Topic.SupportedCodecs{
+		Codecs: make([]int32, len(c)),
+	}
 	for i := range c {
-		proto[i] = c[i].ToProto()
+		proto.Codecs[i] = int32(c[i].ToProto().Number())
 	}
 	return proto
+}
+
+func (c *SupportedCodecs) MustFromProto(proto *Ydb_Topic.SupportedCodecs) {
+	res := make([]Codec, len(proto.GetCodecs()))
+	for i := range proto.GetCodecs() {
+		res[i].MustFromProto(Ydb_Topic.Codec(proto.Codecs[i]))
+	}
+	*c = res
 }

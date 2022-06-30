@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
+	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
@@ -343,7 +344,7 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServe
 				dstMess.Data = srcMess.Data
 				dstMess.UncompressedSize = int64(srcMess.UncompressedSize)
 				// TODO: dstMess.MessageGroupID
-				dstBatch.Codec.FromProto(srcMess.Codec) // TODO: move to batch level
+				dstBatch.Codec.MustFromProto(Ydb_Topic.Codec(srcMess.Codec)) // TODO: move to batch level
 			}
 		}
 	}
