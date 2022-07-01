@@ -39,6 +39,7 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 	// request new data portion
 	e.stream.EXPECT().Send(&rawtopicreader.ReadRequest{BytesSize: dataSize * 2})
 
+	commitReceived := make(emptyChan)
 	// Expect commit message with stole
 	e.stream.EXPECT().Send(
 		&rawtopicreader.CommitOffsetRequest{
@@ -54,7 +55,9 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 				},
 			},
 		},
-	)
+	).Do(func(req *rawtopicreader.CommitOffsetRequest) {
+		close(commitReceived)
+	})
 
 	// send message with stole offsets
 	//
@@ -77,6 +80,7 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 			},
 		},
 	})
+
 	e.SendFromServer(&rawtopicreader.ReadResponse{
 		BytesSize: dataSize,
 		PartitionData: []rawtopicreader.PartitionData{
@@ -103,6 +107,7 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 	_ = batch
 	require.NoError(t, err)
 	require.NoError(t, e.reader.Commit(e.ctx, batch.getCommitRange()))
+	<-commitReceived
 }
 
 func TestTopicStreamReaderImpl_Create(t *testing.T) {
