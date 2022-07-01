@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/credentials"
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
@@ -32,7 +32,7 @@ type topicStreamReaderImpl struct {
 
 	freeBytes         chan int
 	sessionController partitionSessionStorage
-	backgroundWorkers backgroundworkers.BackgroundWorker
+	backgroundWorkers background.Worker
 
 	rawMessagesFromBuffer chan rawtopicreader.ServerMessage
 
@@ -124,7 +124,7 @@ func newTopicStreamReaderStopped(stream RawTopicReaderStream, cfg topicStreamRea
 		stream:                &syncedStream{stream: stream},
 		cancel:                cancel,
 		batcher:               newBatcher(),
-		backgroundWorkers:     *backgroundworkers.New(stopPump),
+		backgroundWorkers:     *background.NewWorker(stopPump),
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 

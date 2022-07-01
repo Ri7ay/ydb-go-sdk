@@ -13,7 +13,7 @@ import (
 
 var (
 	errUnconnected  = xerrors.Retryable(errors.New("first connection attempt not finished"))
-	errReaderClosed = errors.New("reader closed")
+	ErrReaderClosed = errors.New("reader closed")
 )
 
 //nolint:lll
@@ -79,7 +79,7 @@ func (r *Reader) initChannels() {
 }
 
 func (r *Reader) Close() error {
-	r.reader.Close(context.TODO(), errReaderClosed)
+	r.reader.Close(context.TODO(), ErrReaderClosed)
 	// TODO: err
 	return nil
 }
@@ -126,8 +126,10 @@ func (s ReadSelector) clone() ReadSelector {
 	return dst
 }
 
+var readOneMessageOption = readExplicitMessagesCount(1)
+
 func (r *Reader) ReadMessage(ctx context.Context) (Message, error) {
-	res, err := r.ReadMessageBatch(ctx, readExplicitMessagesCount(1))
+	res, err := r.ReadMessageBatch(ctx, readOneMessageOption)
 	if err != nil {
 		return Message{}, err
 	}
@@ -135,12 +137,12 @@ func (r *Reader) ReadMessage(ctx context.Context) (Message, error) {
 	return res.Messages[0], nil
 }
 
-func (r *Reader) Commit(ctx context.Context, offset committedBySingleRange) error {
+func (r *Reader) Commit(ctx context.Context, offset CommittedBySingleRange) error {
 	return r.reader.Commit(ctx, offset.getCommitRange())
 }
 
 // CommitRanges commit all from commitRanges
-// commitRanges will reset before exit and can use for accomulate new commits
+// commitRanges will reset before return and can use for accumulate new commits
 func (r *Reader) CommitRanges(ctx context.Context, commitRanges *CommitRages) error {
 	defer commitRanges.Reset()
 

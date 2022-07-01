@@ -10,7 +10,7 @@ import (
 
 	"github.com/jonboulle/clockwork"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -24,7 +24,7 @@ type readerConnectFunc func(ctx context.Context) (batchedStreamReader, error)
 
 type readerReconnector struct {
 	clock      clockwork.Clock
-	background backgroundworkers.BackgroundWorker
+	background background.Worker
 
 	readerConnect readerConnectFunc
 
@@ -100,7 +100,7 @@ func (r *readerReconnector) Close(ctx context.Context, err error) {
 		_ = r.background.Close(ctx, err)
 
 		if r.streamVal != nil {
-			r.streamVal.Close(ctx, xerrors.WithStackTrace(errReaderClosed))
+			r.streamVal.Close(ctx, xerrors.WithStackTrace(ErrReaderClosed))
 		}
 	})
 }
@@ -217,6 +217,10 @@ func (r *readerReconnector) fireReconnectOnRetryableError(stream batchedStreamRe
 }
 
 func (r *readerReconnector) stream(ctx context.Context) (batchedStreamReader, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var err error
 	var connectionChan emptyChan
 	r.m.WithRLock(func() {

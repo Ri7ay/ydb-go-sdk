@@ -1,4 +1,4 @@
-package backgroundworkers
+package background
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 
 // TODO: improve name
 
-// A BackgroundWorker must not be copied after first use
-type BackgroundWorker struct {
+// A Worker must not be copied after first use
+type Worker struct {
 	ctx     context.Context
 	workers sync.WaitGroup
 
@@ -22,22 +22,20 @@ type BackgroundWorker struct {
 	stop xcontext.CancelErrFunc
 }
 
-func New(parent context.Context) *BackgroundWorker {
-	ctx, cancel := xcontext.WithErrCancel(parent)
+func NewWorker(parent context.Context) *Worker {
+	w := Worker{}
+	w.ctx, w.stop = xcontext.WithErrCancel(parent)
 
-	return &BackgroundWorker{
-		ctx:  ctx,
-		stop: cancel,
-	}
+	return &w
 }
 
-func (b *BackgroundWorker) Context() context.Context {
+func (b *Worker) Context() context.Context {
 	b.init()
 
 	return b.ctx
 }
 
-func (b *BackgroundWorker) Start(name string, f func(ctx context.Context)) {
+func (b *Worker) Start(name string, f func(ctx context.Context)) {
 	b.init()
 
 	b.m.Lock()
@@ -55,7 +53,7 @@ func (b *BackgroundWorker) Start(name string, f func(ctx context.Context)) {
 	}()
 }
 
-func (b *BackgroundWorker) Done() <-chan struct{} {
+func (b *Worker) Done() <-chan struct{} {
 	b.init()
 
 	b.m.Lock()
@@ -64,27 +62,23 @@ func (b *BackgroundWorker) Done() <-chan struct{} {
 	return b.ctx.Done()
 }
 
-func (b *BackgroundWorker) Close(ctx context.Context, err error) error {
+func (b *Worker) Close(ctx context.Context, err error) error {
 	b.init()
 
 	b.stop(err)
 
-	waitChan := make(chan struct{}, 1)
+	waitCtx, waitCancel := context.WithCancel(ctx)
 
 	go func() {
 		b.workers.Wait()
-		waitChan <- struct{}{}
+		waitCancel()
 	}()
 
-	select {
-	case <-waitChan:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	<-waitCtx.Done()
+	return ctx.Err()
 }
 
-func (b *BackgroundWorker) init() {
+func (b *Worker) init() {
 	b.onceInit.Do(func() {
 		if b.ctx == nil {
 			b.ctx, b.stop = xcontext.WithErrCancel(context.Background())

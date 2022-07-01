@@ -8,9 +8,9 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 )
 
-var _ committedBySingleRange = Message{}
+var _ CommittedBySingleRange = Message{}
 
-var _ committedBySingleRange = Batch{}
+var _ CommittedBySingleRange = Batch{}
 
 func TestCompressCommitsInplace(t *testing.T) {
 	session1 := &partitionSession{partitionSessionID: 1}

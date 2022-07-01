@@ -228,7 +228,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 
 		<-stream2Ready
 
-		reconnector.Close(context.Background(), errReaderClosed)
+		reconnector.Close(context.Background(), ErrReaderClosed)
 	})
 
 	t.Run("StartWithCancelledContext", func(t *testing.T) {

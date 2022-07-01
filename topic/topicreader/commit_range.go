@@ -6,7 +6,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 )
 
-type committedBySingleRange interface { // Интерфейс, который можно коммитить по оффсету
+type CommittedBySingleRange interface {
 	getCommitRange() commitRange
 }
 
@@ -22,13 +22,13 @@ func NewCommitRangesWithCapacity(capacity int) CommitRages {
 	return CommitRages{ranges: make([]commitRange, 0, capacity)}
 }
 
-func NewCommitRanges(commitable ...committedBySingleRange) CommitRages {
+func NewCommitRanges(commitable ...CommittedBySingleRange) CommitRages {
 	var res CommitRages
 	res.Append(commitable...)
 	return res
 }
 
-func (r *CommitRages) Append(ranges ...committedBySingleRange) {
+func (r *CommitRages) Append(ranges ...CommittedBySingleRange) {
 	converted := make([]commitRange, len(ranges))
 
 	for i := range ranges {

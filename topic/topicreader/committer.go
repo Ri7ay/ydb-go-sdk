@@ -10,7 +10,7 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
@@ -29,7 +29,7 @@ type committer struct {
 
 	clock            clockwork.Clock
 	commitLoopSignal emptyChan
-	backgroundWorker backgroundworkers.BackgroundWorker
+	backgroundWorker background.Worker
 
 	m       xsync.Mutex
 	waiters []commitWaiter
@@ -41,7 +41,7 @@ func newCommitter(lifeContext context.Context, mode CommitMode, send sendMessage
 		mode:             mode,
 		clock:            clockwork.NewRealClock(),
 		send:             send,
-		backgroundWorker: *backgroundworkers.New(lifeContext),
+		backgroundWorker: *background.NewWorker(lifeContext),
 	}
 	res.initChannels()
 	res.start()
