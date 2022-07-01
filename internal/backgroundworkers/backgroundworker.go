@@ -19,7 +19,7 @@ type BackgroundWorker struct {
 	onceInit sync.Once
 
 	m      xsync.Mutex
-	cancel xcontext.CancelErrFunc
+	stop xcontext.CancelErrFunc
 }
 
 func New(parent context.Context) *BackgroundWorker {
