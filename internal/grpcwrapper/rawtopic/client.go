@@ -7,6 +7,8 @@ import (
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-genproto/Ydb_Topic_V1"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicwriter"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -50,7 +52,15 @@ func (c *Client) DropTopic(
 func (c *Client) StreamRead(ctxStreamLifeTime context.Context) (rawtopicreader.StreamReader, error) {
 	protoResp, err := c.PQService.MigrationStreamingRead(ctxStreamLifeTime)
 	if err != nil {
-		return rawtopicreader.StreamReader{}, xerrors.WithStackTrace(err)
+		return rawtopicreader.StreamReader{}, xerrors.WithStackTrace(fmt.Errorf("ydb: failed start grpc topic stream read: %w", err))
 	}
 	return rawtopicreader.StreamReader{Stream: protoResp}, nil
+}
+
+func (c *Client) StreamWrite(ctxStreamLifeTime context.Context) (rawtopicwriter.StreamWriter, error) {
+	protoResp, err := c.PQService.StreamingWrite(ctxStreamLifeTime)
+	if err != nil {
+		return rawtopicwriter.StreamWriter{}, xerrors.WithStackTrace(fmt.Errorf("ydb: failed start grpc topic stream write: %w", err))
+	}
+	return rawtopicwriter.StreamWriter{Stream: protoResp}, nil
 }
