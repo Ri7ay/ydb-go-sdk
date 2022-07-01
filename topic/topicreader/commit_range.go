@@ -3,7 +3,7 @@ package topicreader
 import (
 	"sort"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 )
 
 type committedBySingleRange interface { // Интерфейс, который можно коммитить по оффсету

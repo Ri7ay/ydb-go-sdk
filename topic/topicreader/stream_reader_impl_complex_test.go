@@ -14,7 +14,9 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 
@@ -25,8 +27,6 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 )
 
 func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
@@ -65,7 +65,7 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 				PartitionSessionID: e.partitionSessionID,
 				Batches: []rawtopicreader.Batch{
 					{
-						Codec:          rawtopic.CodecRaw,
+						Codec:          rawtopiccommon.CodecRaw,
 						MessageGroupID: "1",
 						MessageData: []rawtopicreader.MessageData{
 							{
@@ -84,7 +84,7 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 				PartitionSessionID: e.partitionSessionID,
 				Batches: []rawtopicreader.Batch{
 					{
-						Codec:          rawtopic.CodecRaw,
+						Codec:          rawtopiccommon.CodecRaw,
 						MessageGroupID: "1",
 						MessageData: []rawtopicreader.MessageData{
 							{
@@ -233,7 +233,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 				PartitionSessionID: e.partitionSessionID,
 				Batches: []rawtopicreader.Batch{
 					{
-						Codec:            rawtopic.CodecRaw,
+						Codec:            rawtopiccommon.CodecRaw,
 						WriteSessionMeta: map[string]string{"a": "b", "c": "d"},
 						WrittenAt:        testTime(5),
 						MessageData: []rawtopicreader.MessageData{
@@ -256,7 +256,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 						},
 					},
 					{
-						Codec:            rawtopic.CodecGzip,
+						Codec:            rawtopiccommon.CodecGzip,
 						WriteSessionMeta: map[string]string{"e": "f", "g": "h"},
 						WrittenAt:        testTime(6),
 						MessageData: []rawtopicreader.MessageData{

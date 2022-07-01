@@ -4,6 +4,8 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawoptional"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
@@ -22,7 +24,7 @@ func (req *AlterTopicRequest) ToProto() *Ydb_PersQueue_V1.AddReadRuleRequest {
 type Consumer struct {
 	Name            string
 	Important       bool
-	SupportedCodecs SupportedCodecs
+	SupportedCodecs rawtopiccommon.SupportedCodecs
 	ReadFrom        rawoptional.OptionalTime
 	Attributes      map[string]string
 }

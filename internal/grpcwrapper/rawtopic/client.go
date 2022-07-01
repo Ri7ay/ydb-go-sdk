@@ -1,4 +1,4 @@
-package rawtopicclient
+package rawtopic
 
 import (
 	"context"
@@ -7,9 +7,8 @@ import (
 	Ydb_PersQueue_V12 "github.com/ydb-platform/ydb-go-genproto/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-genproto/Ydb_Topic_V1"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -20,8 +19,8 @@ type Client struct {
 
 func (c *Client) CreateTopic(
 	ctx context.Context,
-	req rawtopic.CreateTopicRequest,
-) (res rawtopic.CreateTopicResult, err error) {
+	req CreateTopicRequest,
+) (res CreateTopicResult, err error) {
 	resp, err := c.TopicService.CreateTopic(ctx, req.ToProto())
 	if err != nil {
 		return res, xerrors.WithStackTrace(fmt.Errorf("ydb: create topic grpc failed: %w", err))
@@ -30,7 +29,7 @@ func (c *Client) CreateTopic(
 	return res, err
 }
 
-func (c *Client) DescribeTopic(ctx context.Context, req rawtopic.DescribeTopicRequest) (res rawtopic.DescribeTopicResult, err error) {
+func (c *Client) DescribeTopic(ctx context.Context, req DescribeTopicRequest) (res DescribeTopicResult, err error) {
 	resp, err := c.TopicService.DescribeTopic(ctx, req.ToProto())
 	err = res.FromProto(resp)
 	return res, err
@@ -38,8 +37,8 @@ func (c *Client) DescribeTopic(ctx context.Context, req rawtopic.DescribeTopicRe
 
 func (c *Client) DropTopic(
 	ctx context.Context,
-	req rawtopic.DropTopicRequest,
-) (res rawtopic.DropTopicResult, err error) {
+	req DropTopicRequest,
+) (res DropTopicResult, err error) {
 	resp, err := c.TopicService.DropTopic(ctx, req.ToProto())
 	if err != nil {
 		return res, xerrors.WithStackTrace(fmt.Errorf("ydb: drop topic grpc failed: %w", err))

@@ -3,6 +3,8 @@ package rawtopic
 import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
 )
 
@@ -10,7 +12,7 @@ type CreateTopicRequest struct {
 	OperationParams rawydb.OperationParams
 
 	Path            string
-	SupportedCodecs SupportedCodecs
+	SupportedCodecs rawtopiccommon.SupportedCodecs
 	Consumers       []Consumer
 }
 

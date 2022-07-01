@@ -1,4 +1,4 @@
-package rawtopic
+package rawtopiccommon
 
 import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"

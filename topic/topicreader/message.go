@@ -9,7 +9,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -46,16 +46,16 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-func createReader(codec rawtopic.Codec, rawBytes []byte, uncompressedSize int64) *oneTimeReader {
+func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize int64) *oneTimeReader {
 	var reader io.Reader
 	switch codec {
-	case rawtopic.CodecRaw:
+	case rawtopiccommon.CodecRaw:
 		reader = bytes.NewReader(rawBytes)
 		if uncompressedSize == 0 {
 			// TODO: Migration protocol workaround
 			uncompressedSize = int64(len(rawBytes))
 		}
-	case rawtopic.CodecGzip:
+	case rawtopiccommon.CodecGzip:
 		gzipReader, err := gzip.NewReader(bytes.NewReader(rawBytes))
 		if err == nil {
 			reader = gzipReader

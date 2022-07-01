@@ -8,9 +8,10 @@ import (
 
 	"github.com/jonboulle/clockwork"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backgroundworkers"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )

@@ -7,7 +7,8 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
-	rawtopicreader "github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicreader"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 )
 
 // MockRawTopicReaderStream is a mock of RawTopicReaderStream interface.

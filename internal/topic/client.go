@@ -16,15 +16,13 @@ import (
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/topic/config"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopicclient"
-
 	"github.com/ydb-platform/ydb-go-sdk/v3/topic/topicreader"
 )
 
 // var _ persqueue.Client = &Client{}
 
 type Client struct {
-	rawClient              rawtopicclient.Client
+	rawClient              rawtopic.Client
 	config                 config.Config
 	defaultOperationParams rawydb.OperationParams
 }
@@ -40,7 +38,7 @@ func New(cc grpc.ClientConnInterface, opts ...config.Option) *Client {
 	return &Client{
 		config:                 cfg,
 		defaultOperationParams: defaultParams,
-		rawClient: rawtopicclient.Client{
+		rawClient: rawtopic.Client{
 			PQService:    Ydb_PersQueue_V1.NewPersQueueServiceClient(cc),
 			TopicService: Ydb_Topic_V1.NewTopicServiceClient(cc),
 		},

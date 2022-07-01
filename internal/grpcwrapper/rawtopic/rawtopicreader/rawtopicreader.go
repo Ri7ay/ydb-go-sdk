@@ -8,14 +8,11 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic"
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
-)
-
-type (
-	SupportedCodecs []rawtopic.Codec
 )
 
 type PartitionSessionID int64
@@ -217,14 +214,14 @@ func (*serverMessageImpl) isServerMessage() {}
 type UpdateTokenRequest struct {
 	clientMessageImpl
 
-	rawtopic.UpdateTokenRequest
+	rawtopiccommon.UpdateTokenRequest
 }
 
 type UpdateTokenResponse struct {
 	serverMessageImpl
 	ServerMessageMetadata
 
-	rawtopic.UpdateTokenResponse
+	rawtopiccommon.UpdateTokenResponse
 }
 
 //
@@ -361,7 +358,7 @@ type PartitionData struct {
 	Batches []Batch
 }
 type Batch struct {
-	Codec rawtopic.Codec
+	Codec rawtopiccommon.Codec
 
 	MessageGroupID   string
 	WriteSessionMeta map[string]string // nil if session meta is empty
