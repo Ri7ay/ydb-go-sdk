@@ -18,7 +18,7 @@ type BackgroundWorker struct {
 
 	onceInit sync.Once
 
-	m      xsync.Mutex
+	m    xsync.Mutex
 	stop xcontext.CancelErrFunc
 }
 
@@ -26,8 +26,8 @@ func New(parent context.Context) *BackgroundWorker {
 	ctx, cancel := xcontext.WithErrCancel(parent)
 
 	return &BackgroundWorker{
-		ctx:    ctx,
-		cancel: cancel,
+		ctx:  ctx,
+		stop: cancel,
 	}
 }
 
@@ -67,7 +67,7 @@ func (b *BackgroundWorker) Done() <-chan struct{} {
 func (b *BackgroundWorker) Close(ctx context.Context, err error) error {
 	b.init()
 
-	b.cancel(err)
+	b.stop(err)
 
 	waitChan := make(chan struct{}, 1)
 
@@ -87,7 +87,7 @@ func (b *BackgroundWorker) Close(ctx context.Context, err error) error {
 func (b *BackgroundWorker) init() {
 	b.onceInit.Do(func() {
 		if b.ctx == nil {
-			b.ctx, b.cancel = xcontext.WithErrCancel(context.Background())
+			b.ctx, b.stop = xcontext.WithErrCancel(context.Background())
 		}
 	})
 }
