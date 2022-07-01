@@ -140,6 +140,10 @@ func (r *topicStreamReaderImpl) ReadMessageBatch(
 	ctx context.Context,
 	opts readMessageBatchOptions,
 ) (batch Batch, err error) {
+	if err := ctx.Err(); err != nil {
+		return Batch{}, err
+	}
+
 	ctx, cancel := xcontext.Merge(ctx, r.ctx)
 	defer func() {
 		cancel(errors.New("ydb: topic stream read message batch competed"))
