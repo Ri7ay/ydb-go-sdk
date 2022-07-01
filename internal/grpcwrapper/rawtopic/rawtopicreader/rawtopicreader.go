@@ -5,6 +5,8 @@ import (
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawydb"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -30,8 +32,8 @@ func (s StreamReader) Recv() (ServerMessage, error) {
 		return nil, err
 	}
 
-	var meta ServerMessageMetadata
-	if err = meta.metaFromProto(grpcMess); err != nil {
+	var meta rawtopiccommon.ServerMessageMetadata
+	if err = meta.MetaFromProto(grpcMess); err != nil {
 		return nil, err
 	}
 	if !meta.Status.IsSuccess() {
@@ -114,31 +116,10 @@ func (*clientMessageImpl) isClientMessage() {}
 
 type ServerMessage interface {
 	isServerMessage()
-	StatusData() ServerMessageMetadata
+	StatusData() rawtopiccommon.ServerMessageMetadata
 	SetStatus(status rawydb.StatusCode)
 }
 
 type serverMessageImpl struct{}
 
 func (*serverMessageImpl) isServerMessage() {}
-
-type ServerMessageMetadata struct {
-	Status rawydb.StatusCode
-	Issues rawydb.Issues
-}
-
-func (m *ServerMessageMetadata) metaFromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage) error {
-	if err := m.Status.FromProto(p.Status); err != nil {
-		return err
-	}
-
-	return m.Issues.FromProto(p.Issues)
-}
-
-func (m *ServerMessageMetadata) StatusData() ServerMessageMetadata {
-	return *m
-}
-
-func (m *ServerMessageMetadata) SetStatus(status rawydb.StatusCode) {
-	m.Status = status
-}

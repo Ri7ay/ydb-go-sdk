@@ -111,7 +111,7 @@ func TestTopicStreamReaderImpl_Create(t *testing.T) {
 		stream := NewMockRawTopicReaderStream(mc)
 		stream.EXPECT().Send(gomock.Any()).Return(nil)
 		stream.EXPECT().Recv().Return(&rawtopicreader.StartPartitionSessionRequest{
-			ServerMessageMetadata: rawtopicreader.ServerMessageMetadata{Status: rawydb.StatusInternalError},
+			ServerMessageMetadata: rawtopiccommon.ServerMessageMetadata{Status: rawydb.StatusInternalError},
 		}, nil)
 		stream.EXPECT().CloseSend().Return(nil)
 

@@ -79,7 +79,7 @@ type UpdateTokenRequest struct {
 
 type UpdateTokenResponse struct {
 	serverMessageImpl
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 
 	rawtopiccommon.UpdateTokenResponse
 }
@@ -129,7 +129,7 @@ type TopicReadSettings struct {
 type InitResponse struct {
 	serverMessageImpl
 
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 	SessionID string
 }
 
@@ -154,7 +154,7 @@ func (r *ReadRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMe
 type ReadResponse struct {
 	serverMessageImpl
 
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 	BytesSize     int // TODO: FillFromProto
 	PartitionData []PartitionData
 }
@@ -278,7 +278,7 @@ type OffsetRange struct {
 type CommitOffsetResponse struct {
 	serverMessageImpl
 
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 	PartitionsCommittedOffsets []PartitionCommittedOffset
 }
 
@@ -315,7 +315,7 @@ type PartitionSessionStatusRequest struct {
 type PartitionSessionStatusResponse struct {
 	serverMessageImpl
 
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 	PartitionSessionID     PartitionSessionID
 	PartitionOffsets       OffsetRange
 	WriteTimeHighWatermark time.Time
@@ -328,7 +328,7 @@ type PartitionSessionStatusResponse struct {
 type StartPartitionSessionRequest struct {
 	serverMessageImpl
 
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 	PartitionSession PartitionSession
 	CommittedOffset  Offset
 	PartitionOffsets OffsetRange
@@ -384,7 +384,7 @@ func (r *StartPartitionSessionResponse) toProto() *Ydb_PersQueue_V1.MigrationStr
 type StopPartitionSessionRequest struct {
 	serverMessageImpl
 
-	ServerMessageMetadata
+	rawtopiccommon.ServerMessageMetadata
 	PartitionSessionID PartitionSessionID
 	Graceful           bool
 	CommittedOffset    Offset

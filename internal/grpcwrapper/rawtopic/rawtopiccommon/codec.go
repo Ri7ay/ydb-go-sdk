@@ -5,6 +5,7 @@ import (
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 )
 
+// Codec any int value, for example for custom codec
 type Codec int
 
 const (
