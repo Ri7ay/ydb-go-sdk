@@ -13,8 +13,8 @@ type voidValue struct{}
 func (v voidValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v voidValue) String() string {
@@ -30,15 +30,11 @@ var (
 	}
 )
 
-func (voidValue) getType() T {
+func (voidValue) Type() T {
 	return _voidValueType
 }
 
-func (voidValue) toYDBType(a *allocator.Allocator) *Ydb.Type {
-	return _voidValueType.toYDB(a)
-}
-
-func (voidValue) toYDBValue(*allocator.Allocator) *Ydb.Value {
+func (voidValue) toYDB(*allocator.Allocator) *Ydb.Value {
 	return _voidValue
 }
 

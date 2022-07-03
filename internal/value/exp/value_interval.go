@@ -13,8 +13,8 @@ type intervalValue int64
 func (v intervalValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v intervalValue) String() string {
@@ -23,15 +23,11 @@ func (v intervalValue) String() string {
 	return buf.String()
 }
 
-func (intervalValue) getType() T {
+func (intervalValue) Type() T {
 	return TypeInterval
 }
 
-func (intervalValue) toYDBType(*allocator.Allocator) *Ydb.Type {
-	return primitive[TypeInterval]
-}
-
-func (v intervalValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v intervalValue) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Int64()
 	vv.Int64Value = int64(v)
 

@@ -13,8 +13,8 @@ type uint16Value uint16
 func (v uint16Value) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v uint16Value) String() string {
@@ -23,15 +23,11 @@ func (v uint16Value) String() string {
 	return buf.String()
 }
 
-func (uint16Value) getType() T {
+func (uint16Value) Type() T {
 	return TypeUint16
 }
 
-func (v uint16Value) toYDBType(*allocator.Allocator) *Ydb.Type {
-	return primitive[TypeUint16]
-}
-
-func (v uint16Value) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v uint16Value) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Uint32()
 	vv.Uint32Value = uint32(v)
 

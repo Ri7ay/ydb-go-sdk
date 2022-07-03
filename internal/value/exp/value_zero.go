@@ -15,8 +15,8 @@ type zeroValue struct {
 func (v *zeroValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v *zeroValue) String() string {
@@ -25,15 +25,11 @@ func (v *zeroValue) String() string {
 	return buf.String()
 }
 
-func (v *zeroValue) getType() T {
+func (v *zeroValue) Type() T {
 	return v.t
 }
 
-func (v *zeroValue) toYDBType(a *allocator.Allocator) *Ydb.Type {
-	return v.t.toYDB(a)
-}
-
-func (v *zeroValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v *zeroValue) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Value()
 	switch t := v.t.(type) {
 	case PrimitiveType:

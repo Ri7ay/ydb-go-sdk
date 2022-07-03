@@ -16,8 +16,8 @@ type tupleValue struct {
 func (v *tupleValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v *tupleValue) String() string {
@@ -26,15 +26,11 @@ func (v *tupleValue) String() string {
 	return buf.String()
 }
 
-func (v *tupleValue) getType() T {
+func (v *tupleValue) Type() T {
 	return v.t
 }
 
-func (v *tupleValue) toYDBType(a *allocator.Allocator) *Ydb.Type {
-	return v.t.toYDB(a)
-}
-
-func (v *tupleValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v *tupleValue) toYDB(a *allocator.Allocator) *Ydb.Value {
 	var items []V
 	if v != nil {
 		items = v.items
@@ -42,7 +38,7 @@ func (v *tupleValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
 	vvv := a.Value()
 
 	for _, vv := range items {
-		vvv.Items = append(vvv.Items, vv.toYDBValue(a))
+		vvv.Items = append(vvv.Items, vv.toYDB(a))
 	}
 
 	return vvv
@@ -53,7 +49,7 @@ func TupleValue(values ...V) *tupleValue {
 		tupleItems []T
 	)
 	for _, v := range values {
-		tupleItems = append(tupleItems, v.getType())
+		tupleItems = append(tupleItems, v.Type())
 	}
 	return &tupleValue{
 		t:     Tuple(tupleItems...),

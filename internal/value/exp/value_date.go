@@ -13,8 +13,8 @@ type dateValue uint32
 func (v dateValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v dateValue) String() string {
@@ -23,15 +23,11 @@ func (v dateValue) String() string {
 	return buf.String()
 }
 
-func (dateValue) getType() T {
+func (dateValue) Type() T {
 	return TypeDate
 }
 
-func (dateValue) toYDBType(*allocator.Allocator) *Ydb.Type {
-	return primitive[TypeDate]
-}
-
-func (v dateValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v dateValue) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Uint32()
 
 	vv.Uint32Value = uint32(v)

@@ -15,8 +15,8 @@ type dyNumberValue struct {
 func (v dyNumberValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v dyNumberValue) String() string {
@@ -25,15 +25,11 @@ func (v dyNumberValue) String() string {
 	return buf.String()
 }
 
-func (dyNumberValue) getType() T {
+func (dyNumberValue) Type() T {
 	return TypeDyNumber
 }
 
-func (dyNumberValue) toYDBType(*allocator.Allocator) *Ydb.Type {
-	return primitive[TypeDyNumber]
-}
-
-func (v *dyNumberValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v *dyNumberValue) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Text()
 	if v != nil {
 		vv.TextValue = v.v

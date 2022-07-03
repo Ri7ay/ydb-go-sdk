@@ -13,8 +13,8 @@ type uint64Value uint64
 func (v uint64Value) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v uint64Value) String() string {
@@ -23,15 +23,11 @@ func (v uint64Value) String() string {
 	return buf.String()
 }
 
-func (uint64Value) getType() T {
+func (uint64Value) Type() T {
 	return TypeUint64
 }
 
-func (uint64Value) toYDBType(*allocator.Allocator) *Ydb.Type {
-	return primitive[TypeUint64]
-}
-
-func (v uint64Value) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v uint64Value) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Uint64()
 	vv.Uint64Value = uint64(v)
 

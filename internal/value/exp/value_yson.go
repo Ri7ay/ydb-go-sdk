@@ -15,8 +15,8 @@ type ysonValue struct {
 func (v *ysonValue) toString(buffer *bytes.Buffer) {
 	a := allocator.New()
 	defer a.Free()
-	v.getType().toString(buffer)
-	valueToString(buffer, v.getType(), v.toYDBValue(a))
+	v.Type().toString(buffer)
+	valueToString(buffer, v.Type(), v.toYDB(a))
 }
 
 func (v *ysonValue) String() string {
@@ -25,15 +25,11 @@ func (v *ysonValue) String() string {
 	return buf.String()
 }
 
-func (*ysonValue) getType() T {
+func (*ysonValue) Type() T {
 	return TypeYSON
 }
 
-func (*ysonValue) toYDBType(*allocator.Allocator) *Ydb.Type {
-	return primitive[TypeYSON]
-}
-
-func (v *ysonValue) toYDBValue(a *allocator.Allocator) *Ydb.Value {
+func (v *ysonValue) toYDB(a *allocator.Allocator) *Ydb.Value {
 	vv := a.Text()
 	if v != nil {
 		vv.TextValue = v.v
