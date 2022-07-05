@@ -13,6 +13,7 @@ type (
 		OnPartitionReadStart       func(OnPartitionReadStartInfo)
 		OnPartitionReadStop        func(info OnPartitionReadStopInfo)
 		OnPartitionCommittedNotify func(OnPartitionCommittedInfo)
+		OnReadUnknownGrpcMessage   func(OnReadUnknownGrpcMessageInfo)
 	}
 
 	OnPartitionReadStartInfo struct {
@@ -35,5 +36,10 @@ type (
 		Topic           string
 		PartitionID     int64
 		CommittedOffset int64
+	}
+
+	OnReadUnknownGrpcMessageInfo struct {
+		BaseContext context.Context
+		Error       error
 	}
 )

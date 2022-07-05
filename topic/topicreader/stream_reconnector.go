@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	reconnectDuration = time.Second * 60
+	reconnectDuration = time.Second * 60 * 1000 // TODO: debug timeout
 )
 
 type readerConnectFunc func(ctx context.Context) (batchedStreamReader, error)

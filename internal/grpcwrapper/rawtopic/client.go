@@ -50,7 +50,7 @@ func (c *Client) DropTopic(
 }
 
 func (c *Client) StreamRead(ctxStreamLifeTime context.Context) (rawtopicreader.StreamReader, error) {
-	protoResp, err := c.PQService.MigrationStreamingRead(ctxStreamLifeTime)
+	protoResp, err := c.TopicService.StreamRead(ctxStreamLifeTime)
 	if err != nil {
 		return rawtopicreader.StreamReader{}, xerrors.WithStackTrace(fmt.Errorf("ydb: failed start grpc topic stream read: %w", err))
 	}

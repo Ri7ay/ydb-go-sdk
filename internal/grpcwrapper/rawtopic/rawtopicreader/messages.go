@@ -2,11 +2,11 @@ package rawtopicreader
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
-	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawoptional"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -59,9 +59,9 @@ func (offset OptionalOffset) ToInt64() int64 {
 	return offset.Offset.ToInt64()
 }
 
-func (offset OptionalOffset) ToOffsetPointer() *Offset {
+func (offset OptionalOffset) ToInt64Pointer() *int64 {
 	if offset.HasValue {
-		v := offset.Offset
+		v := offset.Offset.ToInt64()
 		return &v
 	}
 	return nil
@@ -96,25 +96,22 @@ type InitRequest struct {
 	Consumer string
 }
 
-func (g *InitRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_InitRequest {
-	p := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_InitRequest{
-		TopicsReadSettings: nil,
-		Consumer:           g.Consumer,
-		MaxMetaCacheSize:   1024 * 1024 * 1024, // TODO: fix
-		IdleTimeoutMs:      (time.Second * 15).Milliseconds(),
+func (g *InitRequest) toProto() *Ydb_Topic.StreamReadMessage_InitRequest {
+	p := &Ydb_Topic.StreamReadMessage_InitRequest{
+		Consumer: g.Consumer,
 	}
 
-	p.TopicsReadSettings = make([]*Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_TopicReadSettings, 0, len(g.TopicsReadSettings))
-	for _, gSettings := range g.TopicsReadSettings {
-		pSettings := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_TopicReadSettings{
-			Topic: gSettings.Path,
-		}
-		pSettings.PartitionGroupIds = make([]int64, 0, len(gSettings.PartitionsID))
-		for _, partitionID := range gSettings.PartitionsID {
-			pSettings.PartitionGroupIds = append(pSettings.PartitionGroupIds, partitionID+1)
-		}
-		p.TopicsReadSettings = append(p.TopicsReadSettings, pSettings)
+	p.TopicsReadSettings = make([]*Ydb_Topic.StreamReadMessage_InitRequest_TopicReadSettings, len(g.TopicsReadSettings))
+	for topicSettingsIndex := range g.TopicsReadSettings {
+		srcTopicSettings := &g.TopicsReadSettings[topicSettingsIndex]
+		dstTopicSettings := &Ydb_Topic.StreamReadMessage_InitRequest_TopicReadSettings{}
+		p.TopicsReadSettings[topicSettingsIndex] = dstTopicSettings
+
+		dstTopicSettings.Path = srcTopicSettings.Path
+		dstTopicSettings.MaxLag = srcTopicSettings.MaxLag.ToProto()
+		dstTopicSettings.ReadFrom = srcTopicSettings.ReadFrom.ToProto()
 	}
+
 	return p
 }
 
@@ -122,18 +119,18 @@ type TopicReadSettings struct {
 	Path         string
 	PartitionsID []int64
 
-	MaxLag   time.Duration // Optional
-	ReadFrom time.Time     // Optional
+	MaxLag   rawoptional.OptionalDuration
+	ReadFrom rawoptional.OptionalTime
 }
 
 type InitResponse struct {
 	serverMessageImpl
-
 	rawtopiccommon.ServerMessageMetadata
+
 	SessionID string
 }
 
-func (g *InitResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_InitResponse) {
+func (g *InitResponse) fromProto(p *Ydb_Topic.StreamReadMessage_InitResponse) {
 	g.SessionID = p.SessionId
 }
 
@@ -147,61 +144,69 @@ type ReadRequest struct {
 	BytesSize int
 }
 
-func (r *ReadRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Read {
-	return &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Read{}
+func (r *ReadRequest) toProto() *Ydb_Topic.StreamReadMessage_ReadRequest {
+	return &Ydb_Topic.StreamReadMessage_ReadRequest{BytesSize: int64(r.BytesSize)}
 }
 
 type ReadResponse struct {
 	serverMessageImpl
-
 	rawtopiccommon.ServerMessageMetadata
-	BytesSize     int // TODO: FillFromProto
+
+	BytesSize     int
 	PartitionData []PartitionData
 }
 
-func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_DataBatch) error {
+func (r *ReadResponse) fromProto(p *Ydb_Topic.StreamReadMessage_ReadResponse) error {
+	if p == nil {
+		return xerrors.NewWithStackTrace("ydb: unexpected nil Ydb_Topic.StreamReadMessage_ReadResponse")
+	}
+	r.BytesSize = int(p.BytesSize)
+
 	r.PartitionData = make([]PartitionData, len(p.PartitionData))
 	for partitionIndex := range p.PartitionData {
-		dstPartition := &r.PartitionData[partitionIndex]
 		srcPartition := p.PartitionData[partitionIndex]
 		if srcPartition == nil {
-			return xerrors.WithStackTrace(fmt.Errorf("unexpected nil partition data"))
+			return xerrors.NewWithStackTrace("ydb: unexpected nil partition data")
 		}
+		dstPartition := &r.PartitionData[partitionIndex]
+		dstPartition.PartitionSessionID.FromInt64(srcPartition.PartitionSessionId)
 
-		dstPartition.PartitionSessionID.FromInt64(-1) // TODO: Migration protocol workaround
-		dstPartition.PartitionID = int64(srcPartition.Partition)
 		dstPartition.Batches = make([]Batch, len(srcPartition.Batches))
 
 		for batchIndex := range srcPartition.Batches {
-			dstBatch := &dstPartition.Batches[batchIndex]
 			srcBatch := srcPartition.Batches[batchIndex]
 			if srcBatch == nil {
-				return xerrors.WithStackTrace(fmt.Errorf("unexpected nil batch"))
+				return xerrors.NewWithStackTrace("ydb: unexpected nil batch in partition data")
+			}
+			dstBatch := &dstPartition.Batches[batchIndex]
+
+			dstBatch.ProducerID = srcBatch.ProducerId
+			dstBatch.WriteSessionMeta = srcBatch.WriteSessionMeta
+			dstBatch.Codec.MustFromProto(Ydb_Topic.Codec(srcBatch.Codec))
+
+			// TODO: workaround for https://st.yandex-team.ru/LOGBROKER-7590 for test writer
+			if dstBatch.Codec == 0 {
+				dstBatch.Codec = rawtopiccommon.CodecGzip
+			} else {
+				panic("remove workaround for LOGBROKER-7590")
 			}
 
-			dstBatch.MessageGroupID = string(srcBatch.SourceId)
-			dstBatch.WrittenAt = unixMilli(int64(srcBatch.WriteTimestampMs))
-
-			dstBatch.WriteSessionMeta = make(map[string]string, len(srcBatch.ExtraFields))
-			for _, keyValue := range srcBatch.ExtraFields {
-				dstBatch.WriteSessionMeta[keyValue.GetKey()] = keyValue.Value
-			}
+			dstBatch.WrittenAt = srcBatch.WrittenAt.AsTime()
 
 			dstBatch.MessageData = make([]MessageData, len(srcBatch.MessageData))
 			for messageIndex := range srcBatch.MessageData {
-				dstMess := &dstBatch.MessageData[messageIndex]
-				srcMess := srcBatch.MessageData[messageIndex]
-				if srcMess == nil {
-					return xerrors.WithStackTrace(fmt.Errorf("unexpected nil message"))
+				srcMessage := srcBatch.MessageData[messageIndex]
+				if srcMessage == nil {
+					return xerrors.NewWithStackTrace("ydb: unexpected message nil in partition data")
 				}
+				dstMessage := &dstBatch.MessageData[messageIndex]
 
-				dstMess.Offset.FromInt64(int64(srcMess.Offset))
-				dstMess.SeqNo = int64(srcMess.SeqNo)
-				dstMess.CreatedAt = unixMilli(int64(srcMess.CreateTimestampMs))
-				dstMess.Data = srcMess.Data
-				dstMess.UncompressedSize = int64(srcMess.UncompressedSize)
-				// TODO: dstMess.MessageGroupID
-				dstBatch.Codec.MustFromProto(Ydb_Topic.Codec(srcMess.Codec)) // TODO: move to batch level
+				dstMessage.Offset.FromInt64(srcMessage.Offset)
+				dstMessage.SeqNo = srcMessage.SeqNo
+				dstMessage.CreatedAt = srcMessage.CreatedAt.AsTime()
+				dstMessage.Data = srcMessage.Data
+				dstMessage.UncompressedSize = srcMessage.UncompressedSize
+				dstMessage.MessageGroupID = srcMessage.MessageGroupId
 			}
 		}
 	}
@@ -211,16 +216,12 @@ func (r *ReadResponse) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServe
 type PartitionData struct {
 	PartitionSessionID PartitionSessionID
 
-	// PartitionID use for migration protocol only
-	// Deprecated
-	PartitionID int64
-
 	Batches []Batch
 }
 type Batch struct {
 	Codec rawtopiccommon.Codec
 
-	MessageGroupID   string
+	ProducerID       string
 	WriteSessionMeta map[string]string // nil if session meta is empty
 	WrittenAt        time.Time
 
@@ -246,20 +247,20 @@ type CommitOffsetRequest struct {
 	CommitOffsets []PartitionCommitOffset
 }
 
-func (r *CommitOffsetRequest) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Commit {
-	res := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_Commit{}
+func (r *CommitOffsetRequest) toProto() *Ydb_Topic.StreamReadMessage_CommitOffsetRequest {
+	res := &Ydb_Topic.StreamReadMessage_CommitOffsetRequest{}
+	res.CommitOffsets = make([]*Ydb_Topic.StreamReadMessage_CommitOffsetRequest_PartitionCommitOffset, len(r.CommitOffsets))
 
-	for partitionIndex := range r.CommitOffsets {
-		partition := &r.CommitOffsets[partitionIndex]
+	for sessionIndex := range r.CommitOffsets {
+		srcPartitionCommitOffset := &r.CommitOffsets[sessionIndex]
+		dstCommitOffset := &Ydb_Topic.StreamReadMessage_CommitOffsetRequest_PartitionCommitOffset{
+			PartitionSessionId: srcPartitionCommitOffset.PartitionSessionID.ToInt64(),
+		}
+		res.CommitOffsets[sessionIndex] = dstCommitOffset
 
-		for offsetIndex := range partition.Offsets {
-			offset := partition.Offsets[offsetIndex]
-
-			grpcOffset := &Ydb_PersQueue_V1.CommitOffsetRange{}
-			grpcOffset.AssignId = uint64(partition.PartitionSessionID)
-			grpcOffset.StartOffset = uint64(offset.Start.ToInt64())
-			grpcOffset.EndOffset = uint64(offset.End.ToInt64())
-			res.OffsetRanges = append(res.OffsetRanges, grpcOffset)
+		dstCommitOffset.Offsets = make([]*Ydb_Topic.OffsetsRange, len(srcPartitionCommitOffset.Offsets))
+		for offsetIndex := range srcPartitionCommitOffset.Offsets {
+			dstCommitOffset.Offsets[offsetIndex] = srcPartitionCommitOffset.Offsets[offsetIndex].ToProto()
 		}
 	}
 	return res
@@ -275,24 +276,41 @@ type OffsetRange struct {
 	End   Offset
 }
 
+func (r *OffsetRange) FromProto(p *Ydb_Topic.OffsetsRange) error {
+	if p == nil {
+		return xerrors.NewWithStackTrace("ydb: unexpected protobuf nil offsets")
+	}
+
+	r.Start.FromInt64(p.Start)
+	r.End.FromInt64(p.End)
+	return nil
+}
+
+func (r *OffsetRange) ToProto() *Ydb_Topic.OffsetsRange {
+	return &Ydb_Topic.OffsetsRange{
+		Start: r.Start.ToInt64(),
+		End:   r.End.ToInt64(),
+	}
+}
+
 type CommitOffsetResponse struct {
 	serverMessageImpl
-
 	rawtopiccommon.ServerMessageMetadata
+
 	PartitionsCommittedOffsets []PartitionCommittedOffset
 }
 
-func (r *CommitOffsetResponse) fromProto(response *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Committed) error {
-	r.PartitionsCommittedOffsets = make([]PartitionCommittedOffset, len(response.OffsetRanges))
+func (r *CommitOffsetResponse) fromProto(proto *Ydb_Topic.StreamReadMessage_CommitOffsetResponse) error {
+	r.PartitionsCommittedOffsets = make([]PartitionCommittedOffset, len(proto.PartitionsCommittedOffsets))
 	for i := range r.PartitionsCommittedOffsets {
-		grpcCommited := response.OffsetRanges[i]
-		if grpcCommited == nil {
+		srcCommitted := proto.PartitionsCommittedOffsets[i]
+		if srcCommitted == nil {
 			return xerrors.WithStackTrace(errors.New("unexpected nil while parse commit offset response"))
 		}
+		dstCommitted := &r.PartitionsCommittedOffsets[i]
 
-		commited := &r.PartitionsCommittedOffsets[i]
-		commited.PartitionSessionID.FromInt64(int64(grpcCommited.AssignId))
-		commited.CommittedOffset.FromInt64(int64(grpcCommited.EndOffset))
+		dstCommitted.PartitionSessionID.FromInt64(srcCommitted.PartitionSessionId)
+		dstCommitted.CommittedOffset.FromInt64(srcCommitted.CommittedOffset)
 	}
 
 	return nil
@@ -314,8 +332,8 @@ type PartitionSessionStatusRequest struct {
 
 type PartitionSessionStatusResponse struct {
 	serverMessageImpl
-
 	rawtopiccommon.ServerMessageMetadata
+
 	PartitionSessionID     PartitionSessionID
 	PartitionOffsets       OffsetRange
 	WriteTimeHighWatermark time.Time
@@ -327,19 +345,28 @@ type PartitionSessionStatusResponse struct {
 
 type StartPartitionSessionRequest struct {
 	serverMessageImpl
-
 	rawtopiccommon.ServerMessageMetadata
+
 	PartitionSession PartitionSession
 	CommittedOffset  Offset
 	PartitionOffsets OffsetRange
 }
 
-func (r *StartPartitionSessionRequest) fromProto(p *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Assigned) {
-	r.PartitionSession.PartitionID = int64(p.Partition)
-	r.PartitionSession.Path = p.Topic.Path
-	r.PartitionSession.PartitionSessionID.FromInt64(int64(p.AssignId))
-	r.CommittedOffset.FromInt64(int64(p.EndOffset))
-	// TODO: PartitionOffsets
+func (r *StartPartitionSessionRequest) fromProto(p *Ydb_Topic.StreamReadMessage_StartPartitionSessionRequest) error {
+	if p == nil {
+		return xerrors.NewWithStackTrace("ydb: unexpected proto nil start partition session request")
+	}
+
+	if p.PartitionSession == nil {
+		return xerrors.NewWithStackTrace("ydb: unexpected proto nil partition session in start partition session request")
+	}
+	r.PartitionSession.PartitionID = p.PartitionSession.PartitionId
+	r.PartitionSession.Path = p.PartitionSession.Path
+	r.PartitionSession.PartitionSessionID.FromInt64(p.PartitionSession.PartitionSessionId)
+
+	r.CommittedOffset.FromInt64(p.CommittedOffset)
+
+	return r.PartitionOffsets.FromProto(p.PartitionOffsets)
 }
 
 type PartitionSession struct {
@@ -354,25 +381,13 @@ type StartPartitionSessionResponse struct {
 	PartitionSessionID PartitionSessionID
 	ReadOffset         OptionalOffset
 	CommitOffset       OptionalOffset
-
-	// Deprecated
-	Topic string
-
-	// Deprecated
-	PartitionID uint64
 }
 
-func (r *StartPartitionSessionResponse) toProto() *Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_StartRead {
-	res := &Ydb_PersQueue_V1.MigrationStreamingReadClientMessage_StartRead{
-		Topic:     &Ydb_PersQueue_V1.Path{Path: r.Topic},
-		Partition: r.PartitionID,
-		AssignId:  uint64(r.PartitionSessionID),
-	}
-	if r.ReadOffset.HasValue {
-		res.ReadOffset = uint64(r.ReadOffset.ToInt64())
-	}
-	if r.CommitOffset.HasValue {
-		res.CommitOffset = uint64(r.CommitOffset.ToInt64())
+func (r *StartPartitionSessionResponse) toProto() *Ydb_Topic.StreamReadMessage_StartPartitionSessionResponse {
+	res := &Ydb_Topic.StreamReadMessage_StartPartitionSessionResponse{
+		PartitionSessionId: r.PartitionSessionID.ToInt64(),
+		ReadOffset:         r.ReadOffset.ToInt64Pointer(),
+		CommitOffset:       r.CommitOffset.ToInt64Pointer(),
 	}
 	return res
 }
@@ -383,20 +398,20 @@ func (r *StartPartitionSessionResponse) toProto() *Ydb_PersQueue_V1.MigrationStr
 
 type StopPartitionSessionRequest struct {
 	serverMessageImpl
-
 	rawtopiccommon.ServerMessageMetadata
+
 	PartitionSessionID PartitionSessionID
 	Graceful           bool
 	CommittedOffset    Offset
 }
 
-func (r *StopPartitionSessionRequest) fromProto(request *Ydb_PersQueue_V1.MigrationStreamingReadServerMessage_Release) error {
-	if request == nil {
+func (r *StopPartitionSessionRequest) fromProto(proto *Ydb_Topic.StreamReadMessage_StopPartitionSessionRequest) error {
+	if proto == nil {
 		return xerrors.NewWithIssues("ydb: unexpected grpc nil stop partition session request")
 	}
-	r.PartitionSessionID.FromInt64(int64(request.AssignId))
-	r.Graceful = !request.ForcefulRelease
-	r.CommittedOffset.FromInt64(int64(request.CommitOffset))
+	r.PartitionSessionID.FromInt64(proto.PartitionSessionId)
+	r.Graceful = proto.Graceful
+	r.CommittedOffset.FromInt64(proto.CommittedOffset)
 	return nil
 }
 

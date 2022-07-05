@@ -69,10 +69,16 @@ func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
 
 	res.TopicsReadSettings = make([]rawtopicreader.TopicReadSettings, len(cfg.ReadSelectors))
 	for i, selector := range cfg.ReadSelectors {
-		res.TopicsReadSettings[i] = rawtopicreader.TopicReadSettings{
-			Path:         selector.Stream.String(),
-			PartitionsID: selector.Partitions,
-			ReadFrom:     selector.ReadFrom,
+		settings := &res.TopicsReadSettings[i]
+		settings.Path = selector.Stream.String()
+		settings.PartitionsID = selector.Partitions
+		if !selector.ReadFrom.IsZero() {
+			settings.ReadFrom.HasValue = true
+			settings.ReadFrom.Value = selector.ReadFrom
+		}
+		if selector.MaxTimeLag != 0 {
+			settings.MaxLag.HasValue = true
+			settings.MaxLag.Value = selector.MaxTimeLag
 		}
 	}
 
@@ -83,6 +89,7 @@ func newTopicStreamReaderConfig() topicStreamReaderConfig {
 	return topicStreamReaderConfig{
 		BaseContext:             context.Background(),
 		BufferSizeProtoBytes:    1024 * 1024,
+		Cred:                    credentials.NewAnonymousCredentials(),
 		CredUpdateInterval:      time.Hour,
 		CommitMode:              CommitModeAsync,
 		SendBatchTimeLagTrigger: time.Second,
@@ -106,9 +113,6 @@ func newTopicStreamReader(stream RawTopicReaderStream, cfg topicStreamReaderConf
 	if err = reader.startLoops(); err != nil {
 		return nil, err
 	}
-
-	// start read messages
-	reader.freeBytes <- cfg.BufferSizeProtoBytes
 
 	return reader, nil
 }
@@ -171,7 +175,7 @@ func (r *topicStreamReaderImpl) consumeMessagesUntilBatch(
 		case item.IsRawMessage():
 			r.sendRawMessageToChannelUnblocked(item.RawMessage)
 		default:
-			return Batch{}, xerrors.NewWithIssues("ydb: unexpected item type from batcher")
+			return Batch{}, xerrors.WithStackTrace(fmt.Errorf("ydb: unexpected item type from batcher: %#v", item))
 		}
 	}
 }
@@ -280,7 +284,7 @@ func (r *topicStreamReaderImpl) commitAsync(ctx context.Context, offsets CommitR
 	req := &rawtopicreader.CommitOffsetRequest{
 		CommitOffsets: offsets.toPartitionsOffsets(),
 	}
-	return r.stream.Send(req)
+	return r.send(req)
 }
 
 func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error {
@@ -305,6 +309,7 @@ func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error 
 func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
 	err := r.stream.Send(mess)
 	if err != nil {
+		// TODO: log
 		r.Close(r.ctx, err)
 	}
 	return err
@@ -337,7 +342,7 @@ func (r *topicStreamReaderImpl) setStarted() error {
 }
 
 func (r *topicStreamReaderImpl) initSession() error {
-	if err := r.stream.Send(r.cfg.initMessage()); err != nil {
+	if err := r.send(r.cfg.initMessage()); err != nil {
 		return err
 	}
 
@@ -356,7 +361,8 @@ func (r *topicStreamReaderImpl) initSession() error {
 	}
 
 	// TODO: log session id
-	return nil
+
+	return r.sendDataRequest(r.cfg.BufferSizeProtoBytes)
 }
 
 func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
@@ -366,6 +372,12 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 	for {
 		serverMessage, err := r.stream.Recv()
 		if err != nil {
+			if errors.Is(err, rawtopicreader.ErrUnexpectedMessageType) {
+				trace.TopicOnReadUnknownGrpcMessage(r.cfg.Tracer, r.cfg.BaseContext, err)
+				// new messages can be added to protocol, it must be backward compatible to old programs
+				// and skip message is safe
+				continue
+			}
 			r.Close(ctx, err)
 			return
 		}
@@ -433,12 +445,15 @@ func (r *topicStreamReaderImpl) dataRequestLoop(ctx context.Context) {
 				}
 			}
 
-			err := r.stream.Send(&rawtopicreader.ReadRequest{BytesSize: sum})
-			if err != nil {
-				r.Close(ctx, err)
+			if err := r.sendDataRequest(sum); err != nil {
+				return
 			}
 		}
 	}
+}
+
+func (r *topicStreamReaderImpl) sendDataRequest(size int) error {
+	return r.send(&rawtopicreader.ReadRequest{BytesSize: size})
 }
 
 func (r *topicStreamReaderImpl) freeBufferFromMessages(batch Batch) {
@@ -482,19 +497,8 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 	for pIndex := range mess.PartitionData {
 		p := &mess.PartitionData[pIndex]
 
-		var session *partitionSession
-		var err error
-		// TODO: Migration workaround, switch to Get
-		// TODO: PartitionSessionID == -1 is migration workaround, need remove
-		if p.PartitionSessionID == -1 {
-			session, err = r.sessionController.GetByPartitionID(p.PartitionID)
-			if session != nil {
-				p.PartitionSessionID = session.partitionSessionID
-			}
-		} else {
-			// normal way
-			session, err = r.sessionController.Get(p.PartitionSessionID)
-		}
+		// normal way
+		session, err := r.sessionController.Get(p.PartitionSessionID)
 		if err != nil {
 			return err
 		}
@@ -603,8 +607,6 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 
 	respMessage := &rawtopicreader.StartPartitionSessionResponse{
 		PartitionSessionID: session.partitionSessionID,
-		Topic:              session.Topic,
-		PartitionID:        uint64(session.PartitionID),
 	}
 
 	var forceOffset *int64

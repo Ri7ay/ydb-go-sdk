@@ -84,6 +84,25 @@ func (t Topic) Compose(x Topic, opts ...TopicComposeOption) (ret Topic) {
 			}
 		}
 	}
+	{
+		h1 := t.OnReadUnknownGrpcMessage
+		h2 := x.OnReadUnknownGrpcMessage
+		ret.OnReadUnknownGrpcMessage = func(o OnReadUnknownGrpcMessageInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(o)
+			}
+			if h2 != nil {
+				h2(o)
+			}
+		}
+	}
 	return ret
 }
 func (t Topic) onPartitionReadStart(o OnPartitionReadStartInfo) {
@@ -102,6 +121,13 @@ func (t Topic) onPartitionReadStop(info OnPartitionReadStopInfo) {
 }
 func (t Topic) onPartitionCommittedNotify(o OnPartitionCommittedInfo) {
 	fn := t.OnPartitionCommittedNotify
+	if fn == nil {
+		return
+	}
+	fn(o)
+}
+func (t Topic) onReadUnknownGrpcMessage(o OnReadUnknownGrpcMessageInfo) {
+	fn := t.OnReadUnknownGrpcMessage
 	if fn == nil {
 		return
 	}
@@ -132,4 +158,10 @@ func TopicOnPartitionCommittedNotify(t Topic, topic string, partitionID int64, c
 	p.PartitionID = partitionID
 	p.CommittedOffset = committedOffset
 	t.onPartitionCommittedNotify(p)
+}
+func TopicOnReadUnknownGrpcMessage(t Topic, baseContext context.Context, e error) {
+	var p OnReadUnknownGrpcMessageInfo
+	p.BaseContext = baseContext
+	p.Error = e
+	t.onReadUnknownGrpcMessage(p)
 }

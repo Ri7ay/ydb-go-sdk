@@ -90,8 +90,8 @@ WITH (
 	})
 	require.NoError(t, err)
 
-	topicPath := scheme.Path(database + "/test/feed")
-	// topicPath := scheme.Path(database + "/asd")
+	// topicPath := scheme.Path(database + "/test/feed")
+	topicPath := scheme.Path(database + "/asd")
 
 	require.NoError(t, err)
 

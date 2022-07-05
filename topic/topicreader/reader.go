@@ -114,7 +114,8 @@ forReadBatch:
 type ReadSelector struct {
 	Stream     scheme.Path
 	Partitions []int64
-	ReadFrom   time.Time
+	ReadFrom   time.Time     // zero value mean skip read from filter
+	MaxTimeLag time.Duration // 0 mean skip time lag filter
 }
 
 func (s ReadSelector) clone() ReadSelector {

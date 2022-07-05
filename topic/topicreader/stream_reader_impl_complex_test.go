@@ -68,8 +68,8 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 				PartitionSessionID: e.partitionSessionID,
 				Batches: []rawtopicreader.Batch{
 					{
-						Codec:          rawtopiccommon.CodecRaw,
-						MessageGroupID: "1",
+						Codec:      rawtopiccommon.CodecRaw,
+						ProducerID: "1",
 						MessageData: []rawtopicreader.MessageData{
 							{
 								Offset: lastOffset + 10,
@@ -88,8 +88,8 @@ func TestTopicStreamReaderImpl_CommitStoles(t *testing.T) {
 				PartitionSessionID: e.partitionSessionID,
 				Batches: []rawtopicreader.Batch{
 					{
-						Codec:          rawtopiccommon.CodecRaw,
-						MessageGroupID: "1",
+						Codec:      rawtopiccommon.CodecRaw,
+						ProducerID: "1",
 						MessageData: []rawtopicreader.MessageData{
 							{
 								Offset: lastOffset + 15,
