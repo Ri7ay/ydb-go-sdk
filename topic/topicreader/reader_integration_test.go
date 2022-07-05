@@ -95,7 +95,7 @@ WITH (
 
 	require.NoError(t, err)
 
-	reader, err := db.Topic().StartRead("test", []topicreader.ReadSelector{
+	reader, err := db.Topic().StreamRead("test", []topicreader.ReadSelector{
 		{
 			Stream: topicPath,
 		},

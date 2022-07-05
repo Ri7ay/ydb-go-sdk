@@ -83,7 +83,7 @@ func (c *Client) DropTopic(ctx context.Context, path scheme.Path, opts ...option
 	return err
 }
 
-func (c *Client) StartRead(
+func (c *Client) StreamRead(
 	consumer string,
 	readSelectors []topicreader.ReadSelector,
 	opts ...topicreader.ReaderOption,

@@ -15,7 +15,7 @@ type Client interface {
 
 	DropTopic(ctx context.Context, path scheme.Path, opts ...options.DropTopicOption) error
 
-	StartRead(
+	StreamRead(
 		consumer string, // may be todo optional - for set in topic config, with optional redefine
 		readSelectors []topicreader.ReadSelector,
 		opts ...topicreader.ReaderOption,
