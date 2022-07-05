@@ -1,16 +1,18 @@
 package topicwriter
 
 import (
+	"bytes"
 	"io"
 	"time"
 )
 
 type Message struct {
-	SeqNo     int64
-	CreatedAt time.Time
-	Data      io.Reader
-
+	SeqNo        int64
+	CreatedAt    time.Time
+	Data         io.Reader
 	Partitioning Partitioning
+
+	dataContent *bytes.Reader // full copy of read data for send retries
 }
 
 type Partitioning struct {
