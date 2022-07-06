@@ -1,6 +1,10 @@
 package trace
 
-import "context"
+import (
+	"context"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
+)
 
 // tool gtrace used from ./internal/cmd/gtrace
 
@@ -14,16 +18,20 @@ type (
 		OnPartitionReadStop        func(info OnPartitionReadStopInfo)
 		OnPartitionCommittedNotify func(OnPartitionCommittedInfo)
 		OnReadUnknownGrpcMessage   func(OnReadUnknownGrpcMessageInfo)
+		OnReadStreamRawReceived    func(OnReadStreamRawReceivedInfo)
+		OnReadStreamRawSent        func(OnReadStreamRawSentInfo)
 	}
 
 	OnPartitionReadStartInfo struct {
-		PartitionContext context.Context
-		Topic            string
-		PartitionID      int64
-		ReadOffset       *int64
-		CommitOffset     *int64
+		ReaderConnectionID string
+		PartitionContext   context.Context
+		Topic              string
+		PartitionID        int64
+		ReadOffset         *int64
+		CommitOffset       *int64
 	}
 	OnPartitionReadStopInfo struct {
+		ReaderConnectionID string
 		PartitionContext   context.Context
 		Topic              string
 		PartitionID        int64
@@ -33,13 +41,29 @@ type (
 	}
 
 	OnPartitionCommittedInfo struct {
-		Topic           string
-		PartitionID     int64
-		CommittedOffset int64
+		ReaderConnectionID string
+		Topic              string
+		PartitionID        int64
+		CommittedOffset    int64
 	}
 
 	OnReadUnknownGrpcMessageInfo struct {
-		BaseContext context.Context
-		Error       error
+		ReaderConnectionID string
+		BaseContext        context.Context
+		Error              error
+	}
+
+	OnReadStreamRawReceivedInfo struct {
+		ReaderConnectionID string
+		BaseContext        context.Context
+		ServerMessage      rawtopicreader.ServerMessage
+		Error              error
+	}
+
+	OnReadStreamRawSentInfo struct {
+		ReaderConnectionID string
+		BaseContext        context.Context
+		ClientMessage      rawtopicreader.ClientMessage
+		Error              error
 	}
 )

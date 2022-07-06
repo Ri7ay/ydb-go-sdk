@@ -19,6 +19,15 @@ type Client struct {
 	TopicService Ydb_Topic_V1.TopicServiceClient
 }
 
+func (c *Client) AlterTopic(ctx context.Context, req AlterTopicRequest) (res AlterTopicResult, err error) {
+	resp, err := c.TopicService.AlterTopic(ctx, req.ToProto())
+	if err != nil {
+		return res, xerrors.WithStackTrace(fmt.Errorf("ydb: alter topic grpc failed: %w", err))
+	}
+	err = res.FromProto(resp)
+	return res, err
+}
+
 func (c *Client) CreateTopic(
 	ctx context.Context,
 	req CreateTopicRequest,

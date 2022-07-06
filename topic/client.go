@@ -11,6 +11,8 @@ import (
 type Client interface {
 	Close(context.Context) error
 
+	AlterTopic(ctx context.Context, path scheme.Path, opts ...options.AlterTopicOption) error
+
 	CreateTopic(ctx context.Context, path scheme.Path, opts ...options.CreateTopicOption) error
 
 	DropTopic(ctx context.Context, path scheme.Path, opts ...options.DropTopicOption) error

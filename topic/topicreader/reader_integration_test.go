@@ -6,12 +6,15 @@ package topicreader_test
 import (
 	"context"
 	"io"
-	"net/url"
 	"os"
 	"runtime/pprof"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/topic/options"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/trace"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
 
@@ -55,14 +58,10 @@ func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicre
 		connectionString = ecs
 	}
 
-	params, err := url.Parse(connectionString)
-	require.NoError(t, err)
-	database := params.Query().Get("database")
-
 	db, err := ydb.Open(ctx, connectionString, ydb.WithAccessTokenCredentials(token))
+	require.NoError(t, err)
+	database := db.Name()
 	err = db.Table().Do(ctx, func(ctx context.Context, s table.Session) error {
-		return nil
-		// not supported yet
 		_ = s.ExecuteSchemeQuery(ctx, "DROP TABLE test")
 		err = s.ExecuteSchemeQuery(ctx, `
 CREATE TABLE
@@ -73,11 +72,9 @@ CREATE TABLE
 	PRIMARY KEY (id)
 )
 	`)
-		if err != nil {
-			return err
-		}
+		require.NoError(t, err)
 
-		return s.ExecuteSchemeQuery(ctx, `
+		err = s.ExecuteSchemeQuery(ctx, `
 ALTER TABLE
 	test
 ADD CHANGEFEED
@@ -87,19 +84,48 @@ WITH (
 	MODE = 'UPDATES'
 )
 	`)
+		require.NoError(t, err)
+		return nil
 	})
 	require.NoError(t, err)
 
-	// topicPath := scheme.Path(database + "/test/feed")
-	topicPath := scheme.Path(database + "/asd")
+	err = db.Table().DoTx(ctx, func(ctx context.Context, tx table.TransactionActor) error {
+		if _, err = tx.Execute(ctx, "INSERT INTO test (id, val) VALUES(1, 'asd')", nil); err != nil {
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	err = db.Table().DoTx(ctx, func(ctx context.Context, tx table.TransactionActor) error {
+		if _, err = tx.Execute(ctx, "INSERT INTO test (id, val) VALUES(2, 'qwe')", nil); err != nil {
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	topicPath := scheme.Path(database + "/test/feed")
+	// topicPath := scheme.Path(database + "/asd")
 
 	require.NoError(t, err)
+
+	err = db.Topic().AlterTopic(ctx, topicPath, options.WithAlterTopicAddConsumer(options.Consumer{Name: "test"}))
+	require.NoError(t, err)
+
+	tracer := trace.Topic{}
+
+	//tracer.OnReadStreamRawReceived = func(info trace.OnReadStreamRawReceivedInfo) {
+	//	t.Logf("time: %v, received: %#v, err: %v", time.Now(), info.ServerMessage, info.Error)
+	//}
+	//tracer.OnReadStreamRawSent = func(info trace.OnReadStreamRawSentInfo) {
+	//	t.Logf("time: %v, sent: %#v, err: %v", time.Now(), info.ClientMessage, info.Error)
+	//}
 
 	reader, err := db.Topic().StreamRead("test", []topicreader.ReadSelector{
 		{
 			Stream: topicPath,
 		},
-	})
+	}, topicreader.WithTracer(tracer))
 	require.NoError(t, err)
 
 	return db, reader

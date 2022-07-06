@@ -49,6 +49,17 @@ func (c *Client) Close(_ context.Context) error {
 	return nil
 }
 
+func (c *Client) AlterTopic(ctx context.Context, path scheme.Path, opts ...options.AlterTopicOption) error {
+	req := rawtopic.AlterTopicRequest{}
+	req.OperationParams = c.defaultOperationParams
+	req.Path = path.String()
+	for _, f := range opts {
+		f(&req)
+	}
+	_, err := c.rawClient.AlterTopic(ctx, req)
+	return err
+}
+
 func (c *Client) CreateTopic(ctx context.Context, path scheme.Path, opts ...options.CreateTopicOption) error {
 	req := rawtopic.CreateTopicRequest{}
 	req.OperationParams = c.defaultOperationParams

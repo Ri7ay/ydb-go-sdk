@@ -190,8 +190,8 @@ func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelecto
 		cfg.ReadSelectors[i] = readSelectors[i].clone()
 	}
 
-	if len(opts) > 0 {
-		panic("not implemented")
+	for _, f := range opts {
+		f(&cfg)
 	}
 
 	return cfg

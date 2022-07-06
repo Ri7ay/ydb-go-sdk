@@ -1,7 +1,6 @@
 package rawtopic
 
 import (
-	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_PersQueue_V1"
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Topic"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopiccommon"
@@ -17,8 +16,17 @@ type AlterTopicRequest struct {
 	AddConsumer     []Consumer
 }
 
-func (req *AlterTopicRequest) ToProto() *Ydb_PersQueue_V1.AddReadRuleRequest {
-	panic("not implemented")
+func (req *AlterTopicRequest) ToProto() *Ydb_Topic.AlterTopicRequest {
+	// TODO: implement full alter request
+	res := &Ydb_Topic.AlterTopicRequest{
+		OperationParams: req.OperationParams.ToProto(),
+		Path:            req.Path,
+	}
+	res.AddConsumers = make([]*Ydb_Topic.Consumer, len(req.AddConsumer))
+	for i := range req.AddConsumer {
+		res.AddConsumers[i] = req.AddConsumer[i].ToProto()
+	}
+	return res
 }
 
 type Consumer struct {
@@ -47,8 +55,10 @@ func (c *Consumer) ToProto() *Ydb_Topic.Consumer {
 	}
 }
 
-type AlterTopicResult struct{}
+type AlterTopicResult struct {
+	Operation rawydb.Operation
+}
 
-func (r *AlterTopicResult) FromProto(proto *Ydb_PersQueue_V1.AlterTopicResponse) error {
-	panic("not implemented")
+func (r *AlterTopicResult) FromProto(proto *Ydb_Topic.AlterTopicResponse) error {
+	return r.Operation.FromProtoWithStatusCheck(proto.Operation)
 }

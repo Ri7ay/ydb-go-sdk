@@ -2,8 +2,11 @@ package topicreader
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"reflect"
 	"runtime/pprof"
 	"time"
@@ -39,7 +42,8 @@ type topicStreamReaderImpl struct {
 	batcher   *batcher
 	committer *committer
 
-	stream RawTopicReaderStream
+	stream           RawTopicReaderStream
+	readConnectionID string
 
 	m       xsync.RWMutex
 	err     error
@@ -121,6 +125,11 @@ func newTopicStreamReaderStopped(stream RawTopicReaderStream, cfg topicStreamRea
 	labeledContext := pprof.WithLabels(cfg.BaseContext, pprof.Labels("base-context", "topic-stream-reader"))
 	stopPump, cancel := xcontext.WithErrCancel(labeledContext)
 
+	readerConnectionID, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		readerConnectionID = big.NewInt(-1)
+	}
+
 	res := &topicStreamReaderImpl{
 		cfg:                   cfg,
 		ctx:                   stopPump,
@@ -129,6 +138,7 @@ func newTopicStreamReaderStopped(stream RawTopicReaderStream, cfg topicStreamRea
 		cancel:                cancel,
 		batcher:               newBatcher(),
 		backgroundWorkers:     *background.NewWorker(stopPump),
+		readConnectionID:      readerConnectionID.String(),
 		rawMessagesFromBuffer: make(chan rawtopicreader.ServerMessage, 1),
 	}
 
@@ -238,6 +248,7 @@ func (r *topicStreamReaderImpl) onStopPartitionSessionRequestFromBuffer(
 
 	trace.TopicOnPartitionReadStop(
 		r.cfg.Tracer,
+		r.readConnectionID,
 		session.Context(),
 		session.Topic,
 		session.PartitionID,
@@ -308,6 +319,7 @@ func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error 
 
 func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
 	err := r.stream.Send(mess)
+	trace.TopicOnReadStreamRawSent(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, mess, err)
 	if err != nil {
 		// TODO: log
 		r.Close(r.ctx, err)
@@ -347,6 +359,7 @@ func (r *topicStreamReaderImpl) initSession() error {
 	}
 
 	resp, err := r.stream.Recv()
+	trace.TopicOnReadStreamRawReceived(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, resp, err)
 	if err != nil {
 		return err
 	}
@@ -355,12 +368,12 @@ func (r *topicStreamReaderImpl) initSession() error {
 		return xerrors.WithStackTrace(fmt.Errorf("bad status on initial error: %v (%v)", status.Status, status.Issues))
 	}
 
-	_, ok := resp.(*rawtopicreader.InitResponse)
+	initResp, ok := resp.(*rawtopicreader.InitResponse)
 	if !ok {
 		return xerrors.WithStackTrace(fmt.Errorf("bad message type on session init: %v (%v)", resp, reflect.TypeOf(resp)))
 	}
 
-	// TODO: log session id
+	r.readConnectionID = initResp.SessionID
 
 	return r.sendDataRequest(r.cfg.BufferSizeProtoBytes)
 }
@@ -371,9 +384,10 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 
 	for {
 		serverMessage, err := r.stream.Recv()
+		trace.TopicOnReadStreamRawReceived(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, serverMessage, err)
 		if err != nil {
 			if errors.Is(err, rawtopicreader.ErrUnexpectedMessageType) {
-				trace.TopicOnReadUnknownGrpcMessage(r.cfg.Tracer, r.cfg.BaseContext, err)
+				trace.TopicOnReadUnknownGrpcMessage(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, err)
 				// new messages can be added to protocol, it must be backward compatible to old programs
 				// and skip message is safe
 				continue
@@ -635,6 +649,7 @@ func (r *topicStreamReaderImpl) onStartPartitionSessionRequestFromBuffer(
 
 	trace.TopicOnPartitionReadStart(
 		r.cfg.Tracer,
+		r.readConnectionID,
 		session.Context(),
 		session.Topic,
 		session.PartitionID,

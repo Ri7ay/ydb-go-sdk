@@ -1,15 +1,22 @@
 package topicreader
 
 import (
+	"bufio"
 	"io"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
 type oneTimeReader struct {
 	len    int
 	err    error
-	reader io.Reader
+	reader bufio.Reader
+}
+
+func newOneTimeReader(reader io.Reader, uncompressedSize int) *oneTimeReader {
+	res := &oneTimeReader{
+		len: uncompressedSize,
+	}
+	res.reader.Reset(reader)
+	return res
 }
 
 func (s *oneTimeReader) Read(p []byte) (n int, err error) {
@@ -20,23 +27,17 @@ func (s *oneTimeReader) Read(p []byte) (n int, err error) {
 	n, err = s.reader.Read(p)
 	s.len -= n
 
-	if s.len < 0 {
-		s.err = xerrors.NewWithStackTrace("ydb: uncompressed size more, then received from server")
-		s.reader = nil
-		return n, s.err
-	}
-
-	if s.len == 0 {
-		s.err = err
-		if err == nil {
-			s.err = io.EOF
-		}
-		s.reader = nil
+	if _, nextErr := s.reader.Peek(1); nextErr != nil {
+		s.err = nextErr
+		s.reader.Reset(nil)
 	}
 
 	return n, err
 }
 
 func (s *oneTimeReader) Len() int {
+	if s.len < 0 {
+		return 0
+	}
 	return s.len
 }

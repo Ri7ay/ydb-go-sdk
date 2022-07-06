@@ -20,6 +20,9 @@ var (
 
 type LenReader interface {
 	io.Reader
+
+	// Len calculated from uncompressed size, sent by writer. Server doesn't check it and it can be wrong.
+	// can be use for optimization, but code must ready for wrong size, returned by len.
 	Len() int
 }
 
@@ -68,7 +71,7 @@ func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize 
 		}
 	}
 
-	return &oneTimeReader{reader: reader, len: int(uncompressedSize)}
+	return newOneTimeReader(reader, int(uncompressedSize))
 }
 
 type errorReader struct {

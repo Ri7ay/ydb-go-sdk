@@ -186,7 +186,7 @@ func (r *ReadResponse) fromProto(p *Ydb_Topic.StreamReadMessage_ReadResponse) er
 
 			// TODO: workaround for https://st.yandex-team.ru/LOGBROKER-7590 for test writer
 			if dstBatch.Codec == 0 {
-				dstBatch.Codec = rawtopiccommon.CodecGzip
+				dstBatch.Codec = rawtopiccommon.CodecRaw
 			} else {
 				panic("remove workaround for LOGBROKER-7590")
 			}
