@@ -187,6 +187,7 @@ func TestTopicReaderReconnectorConnectionLoop(t *testing.T) {
 		newStream1 := NewMockbatchedStreamReader(mc)
 		newStream1.EXPECT().Close(gomock.Any(), gomock.Any())
 		newStream2 := NewMockbatchedStreamReader(mc)
+
 		newStream2.EXPECT().Close(gomock.Any(), gomock.Any())
 
 		reconnector := &readerReconnector{}

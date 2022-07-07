@@ -306,6 +306,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 				Offset:               prevOffset.ToInt64() + 1,
 				WrittenAt:            testTime(5),
 				WriteSessionMetadata: map[string]string{"a": "b", "c": "d"},
+				UncompressedSize:     3,
 				rawDataLen:           3,
 				commitRange: commitRange{
 					commitOffsetStart: prevOffset + 1,
@@ -321,6 +322,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 				WrittenAt:            testTime(5),
 				WriteSessionMetadata: map[string]string{"a": "b", "c": "d"},
 				rawDataLen:           4,
+				UncompressedSize:     4,
 				commitRange: commitRange{
 					commitOffsetStart: prevOffset + 2,
 					commitOffsetEnd:   prevOffset + 3,
@@ -335,6 +337,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 				WrittenAt:            testTime(6),
 				WriteSessionMetadata: map[string]string{"e": "f", "g": "h"},
 				rawDataLen:           len(compress("098")),
+				UncompressedSize:     3,
 				commitRange: commitRange{
 					commitOffsetStart: prevOffset + 3,
 					commitOffsetEnd:   prevOffset + 11,
@@ -349,6 +352,7 @@ func TestTopicStreamReaderImpl_ReadMessages(t *testing.T) {
 				WrittenAt:            testTime(6),
 				WriteSessionMetadata: map[string]string{"e": "f", "g": "h"},
 				rawDataLen:           len(compress("0987")),
+				UncompressedSize:     4,
 				commitRange: commitRange{
 					commitOffsetStart: prevOffset + 11,
 					commitOffsetEnd:   prevOffset + 21,

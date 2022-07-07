@@ -18,14 +18,6 @@ var (
 	ErrContextExplicitCancelled = errors.New("context explicit cancelled")
 )
 
-type LenReader interface {
-	io.Reader
-
-	// Len calculated from uncompressed size, sent by writer. Server doesn't check it and it can be wrong.
-	// can be use for optimization, but code must ready for wrong size, returned by len.
-	Len() int
-}
-
 type Message struct {
 	commitRange
 
@@ -35,10 +27,11 @@ type Message struct {
 	WriteSessionMetadata map[string]string
 	Offset               int64
 	WrittenAt            time.Time
-	Data                 LenReader
+	Data                 io.Reader
 
 	rawDataLen         int
 	bufferBytesAccount int
+	UncompressedSize   int // as sent by sender, server/sdk doesn't check the field. It may be empty or wrong.
 }
 
 func (m *Message) Context() context.Context {
@@ -49,7 +42,7 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize int) *oneTimeReader {
+func createReader(codec rawtopiccommon.Codec, rawBytes []byte) *oneTimeReader {
 	var reader io.Reader
 	switch codec {
 	case rawtopiccommon.CodecRaw:
@@ -67,7 +60,7 @@ func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize 
 		}
 	}
 
-	return newOneTimeReader(reader, uncompressedSize)
+	return newOneTimeReader(reader)
 }
 
 type errorReader struct {

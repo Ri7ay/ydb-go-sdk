@@ -1,7 +1,6 @@
 package topicreader
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"io"
@@ -11,40 +10,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ LenReader = &oneTimeReader{}
-
 func TestOneTimeReader(t *testing.T) {
 	t.Run("FullRead", func(t *testing.T) {
-		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}), 3)
+		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}))
 		dstBuf := make([]byte, 3)
 		n, err := r.Read(dstBuf)
 		require.NoError(t, err)
 		require.Equal(t, 3, n)
 		require.Equal(t, []byte{1, 2, 3}, dstBuf)
-		require.Equal(t, 0, r.reader.Buffered())
-		require.Zero(t, r.len)
+		_, err = r.Read(dstBuf)
+		require.ErrorIs(t, err, io.EOF)
+		require.Empty(t, r.reader)
 		require.Equal(t, io.EOF, r.err)
 	})
 	t.Run("DstMoreThenContent", func(t *testing.T) {
-		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}), 3)
+		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}))
 		dstBuf := make([]byte, 4)
 		n, err := r.Read(dstBuf)
 		require.NoError(t, err)
 		require.Equal(t, 3, n)
 		require.Equal(t, []byte{1, 2, 3, 0}, dstBuf)
-		require.Equal(t, 0, r.reader.Buffered())
-		require.Zero(t, r.len)
+
+		_, err = r.Read(dstBuf)
+		require.ErrorIs(t, err, io.EOF)
+		require.Empty(t, r.reader)
 		require.Equal(t, io.EOF, r.err)
 	})
 	t.Run("ReadLess", func(t *testing.T) {
-		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}), 3)
+		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}))
 		dstBuf := make([]byte, 2)
 		n, err := r.Read(dstBuf)
 		require.NoError(t, err)
 		require.Equal(t, 2, n)
 		require.Equal(t, []byte{1, 2}, dstBuf)
-		require.Equal(t, 1, r.reader.Buffered())
-		require.Equal(t, 1, r.len)
+		require.NotEmpty(t, r.reader)
 		require.NoError(t, r.err)
 	})
 	t.Run("ReadAfterError", func(t *testing.T) {
@@ -56,10 +55,9 @@ func TestOneTimeReader(t *testing.T) {
 		require.Equal(t, 0, n)
 	})
 	t.Run("InnerErr", func(t *testing.T) {
-		r := newOneTimeReader(nil, 3)
-		r.reader = *bufio.NewReaderSize(nil, 2)
+		r := newOneTimeReader(nil)
 
-		bufSize := r.reader.Size()
+		bufSize := 2
 		preparedData := make([]byte, 2*bufSize)
 		for i := 0; i < 2*bufSize; i++ {
 			if i < bufSize {
@@ -68,7 +66,7 @@ func TestOneTimeReader(t *testing.T) {
 				preparedData[i] = 2
 			}
 		}
-		r.reader.Reset(iotest.TimeoutReader(bytes.NewReader(preparedData)))
+		r.reader = iotest.TimeoutReader(bytes.NewReader(preparedData))
 
 		// first read is ok
 		firstBuf := make([]byte, bufSize)
@@ -89,16 +87,5 @@ func TestOneTimeReader(t *testing.T) {
 		n, err = r.Read(secondBuf)
 		require.Equal(t, err, iotest.ErrTimeout)
 		require.Equal(t, 0, n)
-	})
-	t.Run("InnterReadMoreThenLen", func(t *testing.T) {
-		r := newOneTimeReader(bytes.NewReader([]byte{1, 2, 3}), 2)
-		dstBuf := make([]byte, 3)
-		n, err := r.Read(dstBuf)
-		require.NoError(t, err)
-		require.Equal(t, 3, n)
-		require.Equal(t, []byte{1, 2, 3}, dstBuf)
-		require.Equal(t, 0, r.reader.Buffered())
-		require.Equal(t, -1, r.len)
-		require.Equal(t, 0, r.Len())
 	})
 }

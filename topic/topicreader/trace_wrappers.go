@@ -19,7 +19,7 @@ func (w serverMessageWrapper) Type() string {
 
 func (w serverMessageWrapper) JsonData() io.Reader {
 	content, _ := json.MarshalIndent(w.message, "", "  ")
-	return newOneTimeReader(bytes.NewReader(content), len(content))
+	return newOneTimeReader(bytes.NewReader(content))
 }
 
 func (w serverMessageWrapper) IsReadStreamServerMessageDebugInfo() {}
@@ -34,7 +34,7 @@ func (w clientMessageWrapper) Type() string {
 
 func (w clientMessageWrapper) JsonData() io.Reader {
 	content, _ := json.MarshalIndent(w.message, "", "  ")
-	return newOneTimeReader(bytes.NewReader(content), len(content))
+	return newOneTimeReader(bytes.NewReader(content))
 }
 
 func (w clientMessageWrapper) IsReadStreamClientMessageDebugInfo() {}

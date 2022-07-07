@@ -1,21 +1,17 @@
 package topicreader
 
 import (
-	"bufio"
 	"io"
 )
 
 type oneTimeReader struct {
-	len    int
 	err    error
-	reader bufio.Reader
+	reader io.Reader
 }
 
-func newOneTimeReader(reader io.Reader, uncompressedSize int) *oneTimeReader {
-	res := &oneTimeReader{
-		len: uncompressedSize,
-	}
-	res.reader.Reset(reader)
+func newOneTimeReader(reader io.Reader) *oneTimeReader {
+	res := &oneTimeReader{}
+	res.reader = reader
 	return res
 }
 
@@ -25,19 +21,11 @@ func (s *oneTimeReader) Read(p []byte) (n int, err error) {
 	}
 
 	n, err = s.reader.Read(p)
-	s.len -= n
 
-	if _, nextErr := s.reader.Peek(1); nextErr != nil {
-		s.err = nextErr
-		s.reader.Reset(nil)
+	if err != nil {
+		s.err = err
+		s.reader = nil
 	}
 
 	return n, err
-}
-
-func (s *oneTimeReader) Len() int {
-	if s.len < 0 {
-		return 0
-	}
-	return s.len
 }

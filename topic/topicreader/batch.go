@@ -64,7 +64,8 @@ func newBatchFromStream(session *partitionSession, sb rawtopicreader.Batch) (Bat
 		dstMess.WriteSessionMetadata = sb.WriteSessionMeta
 
 		dstMess.rawDataLen = len(sMess.Data)
-		dstMess.Data = createReader(sb.Codec, sMess.Data, int(sMess.UncompressedSize))
+		dstMess.Data = createReader(sb.Codec, sMess.Data)
+		dstMess.UncompressedSize = int(sMess.UncompressedSize)
 
 		dstMess.commitRange.partitionSession = session
 		dstMess.commitRange.commitOffsetStart = prevOffset + 1
