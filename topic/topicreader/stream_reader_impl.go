@@ -66,7 +66,6 @@ type topicStreamReaderConfig struct {
 }
 
 func (cfg *topicStreamReaderConfig) initMessage() *rawtopicreader.InitRequest {
-	// TODO improve
 	res := &rawtopicreader.InitRequest{
 		Consumer: cfg.Consumer,
 	}
@@ -319,9 +318,8 @@ func (r *topicStreamReaderImpl) checkCommitRange(commitRange commitRange) error 
 
 func (r *topicStreamReaderImpl) send(mess rawtopicreader.ClientMessage) error {
 	err := r.stream.Send(mess)
-	trace.TopicOnReadStreamRawSent(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, mess, err)
+	trace.TopicOnReadStreamRawSent(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, clientMessageWrapper{mess}, err)
 	if err != nil {
-		// TODO: log
 		r.Close(r.ctx, err)
 	}
 	return err
@@ -359,7 +357,7 @@ func (r *topicStreamReaderImpl) initSession() error {
 	}
 
 	resp, err := r.stream.Recv()
-	trace.TopicOnReadStreamRawReceived(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, resp, err)
+	trace.TopicOnReadStreamRawReceived(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, serverMessageWrapper{resp}, err)
 	if err != nil {
 		return err
 	}
@@ -384,10 +382,10 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 
 	for {
 		serverMessage, err := r.stream.Recv()
-		trace.TopicOnReadStreamRawReceived(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, serverMessage, err)
+		trace.TopicOnReadStreamRawReceived(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, serverMessageWrapper{serverMessage}, err)
 		if err != nil {
 			if errors.Is(err, rawtopicreader.ErrUnexpectedMessageType) {
-				trace.TopicOnReadUnknownGrpcMessage(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, err)
+				trace.TopicOnReadUnknownGrpcMessage(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, nil, err)
 				// new messages can be added to protocol, it must be backward compatible to old programs
 				// and skip message is safe
 				continue
@@ -398,8 +396,7 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 
 		status := serverMessage.StatusData()
 		if !status.Status.IsSuccess() {
-			// TODO: actualize error message
-			r.Close(ctx, xerrors.WithStackTrace(fmt.Errorf("bad status from pq grpc stream: %v", status.Status)))
+			r.Close(ctx, xerrors.WithStackTrace(fmt.Errorf("ydb: bad status from pq grpc stream: %v, %v", status.Status, status.Issues.String())))
 		}
 
 		switch m := serverMessage.(type) {
@@ -426,8 +423,7 @@ func (r *topicStreamReaderImpl) readMessagesLoop(ctx context.Context) {
 		case *rawtopicreader.UpdateTokenResponse:
 			// skip
 		default:
-			// TODO: remove before release
-			r.Close(ctx, xerrors.WithStackTrace(fmt.Errorf("receive unexpected message: %#v (%v)", m, reflect.TypeOf(m))))
+			trace.TopicOnReadUnknownGrpcMessage(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, serverMessageWrapper{serverMessage}, nil)
 		}
 	}
 }
@@ -491,12 +487,7 @@ func (r *topicStreamReaderImpl) updateTokenLoop(ctx context.Context) {
 		case <-readerCancel:
 			return
 		case <-ticker.C:
-			tokenCtx, cancel := context.WithCancel(r.ctx)
-			err := r.updateToken(tokenCtx)
-			cancel()
-			if err != nil {
-				// TODO: log
-			}
+			r.updateToken(r.ctx)
 		}
 	}
 }
@@ -543,9 +534,8 @@ func (r *topicStreamReaderImpl) onReadResponse(mess *rawtopicreader.ReadResponse
 	return nil
 }
 
-func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
+func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) error {
 	isFirstClose := false
-	// TODO: close error
 	r.m.WithLock(func() {
 		if r.closed {
 			return
@@ -557,17 +547,23 @@ func (r *topicStreamReaderImpl) Close(ctx context.Context, err error) {
 		r.cancel(err)
 	})
 	if !isFirstClose {
-		// TODO: return error
-		return
+		return nil
 	}
 
-	_ = r.committer.Close(ctx, err)
+	closeErr := r.committer.Close(ctx, err)
 
 	// close stream strong after committer close - for flush commits buffer
-	_ = r.stream.CloseSend()
+	streamCloseErr := r.stream.CloseSend()
+	if closeErr == nil {
+		closeErr = streamCloseErr
+	}
 
 	// close background workers after r.stream.CloseSend
-	_ = r.backgroundWorkers.Close(ctx, err)
+	bgCloseErr := r.backgroundWorkers.Close(ctx, err)
+	if closeErr == nil {
+		closeErr = bgCloseErr
+	}
+	return closeErr
 }
 
 func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffsetResponse) error {
@@ -583,18 +579,20 @@ func (r *topicStreamReaderImpl) onCommitResponse(mess *rawtopicreader.CommitOffs
 	return nil
 }
 
-func (r *topicStreamReaderImpl) updateToken(ctx context.Context) error {
+func (r *topicStreamReaderImpl) updateToken(ctx context.Context) {
 	token, err := r.cfg.Cred.Token(ctx)
 	if err != nil {
-		// TODO: log
-		return xerrors.WithStackTrace(err)
+		trace.TopicOnReadStreamUpdateToken(
+			r.cfg.Tracer,
+			r.readConnectionID,
+			r.cfg.BaseContext,
+			len(token),
+			xerrors.WithStackTrace(err),
+		)
 	}
 
 	err = r.send(&rawtopicreader.UpdateTokenRequest{UpdateTokenRequest: rawtopiccommon.UpdateTokenRequest{Token: token}})
-	if err != nil {
-		return err
-	}
-	return nil
+	trace.TopicOnReadStreamUpdateToken(r.cfg.Tracer, r.readConnectionID, r.cfg.BaseContext, len(token), err)
 }
 
 func (r *topicStreamReaderImpl) onStartPartitionSessionRequest(m *rawtopicreader.StartPartitionSessionRequest) error {

@@ -3,6 +3,7 @@ package topicreader
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"time"
 
@@ -15,6 +16,8 @@ var (
 	errUnconnected  = xerrors.Retryable(errors.New("first connection attempt not finished"))
 	ErrReaderClosed = errors.New("reader closed")
 )
+
+const infiniteTimeout = time.Duration(math.MaxInt64)
 
 //nolint:lll
 //go:generate mockgen -destination raw_topic_reader_stream_mock_test.go -package topicreader -write_package_comment=false . RawTopicReaderStream
@@ -66,7 +69,7 @@ func NewReader(
 	}
 
 	res := &Reader{
-		reader:             newReaderReconnector(readerConnector),
+		reader:             newReaderReconnector(readerConnector, cfg.operationTimeout),
 		defaultBatchConfig: cfg.DefaultBatchConfig,
 	}
 	res.initChannels()
@@ -78,9 +81,8 @@ func (r *Reader) initChannels() {
 	r.oneMessage = make(chan *Message)
 }
 
-func (r *Reader) Close() error {
-	r.reader.Close(context.TODO(), ErrReaderClosed)
-	// TODO: err
+func (r *Reader) Close(ctx context.Context) error {
+	r.reader.Close(ctx, ErrReaderClosed)
 	return nil
 }
 
@@ -178,11 +180,17 @@ func (r *Reader) CommitRanges(ctx context.Context, commitRanges *CommitRages) er
 type readerConfig struct {
 	DefaultBatchConfig readMessageBatchOptions
 	topicStreamReaderConfig
+	operationTimeout time.Duration
 }
 
-func convertNewParamsToStreamConfig(consumer string, readSelectors []ReadSelector, opts ...ReaderOption) (cfg readerConfig) {
+func convertNewParamsToStreamConfig(
+	consumer string,
+	readSelectors []ReadSelector,
+	opts ...ReaderOption,
+) (cfg readerConfig) {
 	cfg.topicStreamReaderConfig = newTopicStreamReaderConfig()
 	cfg.Consumer = consumer
+	cfg.operationTimeout = infiniteTimeout // default - infinite timeout
 
 	// make own copy, for prevent changing internal states if readSelectors will change outside
 	cfg.ReadSelectors = make([]ReadSelector, len(readSelectors))

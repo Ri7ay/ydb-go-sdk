@@ -16,10 +16,6 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xsync"
 )
 
-const (
-	reconnectDuration = time.Second * 60 * 1000 // TODO: debug timeout
-)
-
 type readerConnectFunc func(ctx context.Context) (batchedStreamReader, error)
 
 type readerReconnector struct {
@@ -29,6 +25,7 @@ type readerReconnector struct {
 	readerConnect readerConnectFunc
 
 	reconnectFromBadStream chan batchedStreamReader
+	connectTimeout         time.Duration
 
 	closeOnce sync.Once
 
@@ -39,11 +36,12 @@ type readerReconnector struct {
 	closedErr                  error
 }
 
-func newReaderReconnector(connector readerConnectFunc) *readerReconnector {
+func newReaderReconnector(connector readerConnectFunc, connectTimeout time.Duration) *readerReconnector {
 	res := &readerReconnector{
-		clock:         clockwork.NewRealClock(),
-		readerConnect: connector,
-		streamErr:     errUnconnected,
+		clock:          clockwork.NewRealClock(),
+		readerConnect:  connector,
+		streamErr:      errUnconnected,
+		connectTimeout: connectTimeout,
 	}
 
 	res.initChannelsAndClock()
@@ -91,18 +89,23 @@ func (r *readerReconnector) Commit(ctx context.Context, commitRange commitRange)
 	return err
 }
 
-func (r *readerReconnector) Close(ctx context.Context, err error) {
+func (r *readerReconnector) Close(ctx context.Context, err error) error {
+	var closeErr error
 	r.closeOnce.Do(func() {
 		r.m.WithLock(func() {
 			r.closedErr = err
 		})
 
-		_ = r.background.Close(ctx, err)
+		closeErr = r.background.Close(ctx, err)
 
 		if r.streamVal != nil {
-			r.streamVal.Close(ctx, xerrors.WithStackTrace(ErrReaderClosed))
+			streamCloseErr := r.streamVal.Close(ctx, xerrors.WithStackTrace(ErrReaderClosed))
+			if closeErr == nil {
+				closeErr = streamCloseErr
+			}
 		}
 	})
+	return closeErr
 }
 
 func (r *readerReconnector) start() {
@@ -157,7 +160,7 @@ func (r *readerReconnector) reconnect(ctx context.Context, oldReader batchedStre
 		oldReader.Close(ctx, xerrors.WithStackTrace(errors.New("ydb: reconnect to pq grpc stream")))
 	}
 
-	newStream, err := connectWithTimeout(r.background.Context(), r.readerConnect, r.clock, reconnectDuration)
+	newStream, err := connectWithTimeout(r.background.Context(), r.readerConnect, r.clock, r.connectTimeout)
 
 	if isRetryableError(err) {
 		go func() {

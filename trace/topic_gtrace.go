@@ -4,8 +4,6 @@ package trace
 
 import (
 	"context"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 )
 
 // topicComposeOptions is a holder of options
@@ -143,6 +141,25 @@ func (t Topic) Compose(x Topic, opts ...TopicComposeOption) (ret Topic) {
 			}
 		}
 	}
+	{
+		h1 := t.OnReadStreamUpdateToken
+		h2 := x.OnReadStreamUpdateToken
+		ret.OnReadStreamUpdateToken = func(o OnReadStreamUpdateTokenInfo) {
+			if options.panicCallback != nil {
+				defer func() {
+					if e := recover(); e != nil {
+						options.panicCallback(e)
+					}
+				}()
+			}
+			if h1 != nil {
+				h1(o)
+			}
+			if h2 != nil {
+				h2(o)
+			}
+		}
+	}
 	return ret
 }
 func (t Topic) onPartitionReadStart(o OnPartitionReadStartInfo) {
@@ -187,6 +204,13 @@ func (t Topic) onReadStreamRawSent(o OnReadStreamRawSentInfo) {
 	}
 	fn(o)
 }
+func (t Topic) onReadStreamUpdateToken(o OnReadStreamUpdateTokenInfo) {
+	fn := t.OnReadStreamUpdateToken
+	if fn == nil {
+		return
+	}
+	fn(o)
+}
 func TopicOnPartitionReadStart(t Topic, readerConnectionID string, partitionContext context.Context, topic string, partitionID int64, readOffset *int64, commitOffset *int64) {
 	var p OnPartitionReadStartInfo
 	p.ReaderConnectionID = readerConnectionID
@@ -216,26 +240,35 @@ func TopicOnPartitionCommittedNotify(t Topic, readerConnectionID string, topic s
 	p.CommittedOffset = committedOffset
 	t.onPartitionCommittedNotify(p)
 }
-func TopicOnReadUnknownGrpcMessage(t Topic, readerConnectionID string, baseContext context.Context, e error) {
+func TopicOnReadUnknownGrpcMessage(t Topic, readerConnectionID string, baseContext context.Context, serverMessage readStreamServerMessageDebugInfo, e error) {
 	var p OnReadUnknownGrpcMessageInfo
 	p.ReaderConnectionID = readerConnectionID
 	p.BaseContext = baseContext
+	p.ServerMessage = serverMessage
 	p.Error = e
 	t.onReadUnknownGrpcMessage(p)
 }
-func TopicOnReadStreamRawReceived(t Topic, readerConnectionID string, baseContext context.Context, s rawtopicreader.ServerMessage, e error) {
+func TopicOnReadStreamRawReceived(t Topic, readerConnectionID string, baseContext context.Context, serverMessage readStreamServerMessageDebugInfo, e error) {
 	var p OnReadStreamRawReceivedInfo
 	p.ReaderConnectionID = readerConnectionID
 	p.BaseContext = baseContext
-	p.ServerMessage = s
+	p.ServerMessage = serverMessage
 	p.Error = e
 	t.onReadStreamRawReceived(p)
 }
-func TopicOnReadStreamRawSent(t Topic, readerConnectionID string, baseContext context.Context, c rawtopicreader.ClientMessage, e error) {
+func TopicOnReadStreamRawSent(t Topic, readerConnectionID string, baseContext context.Context, clientMessage readStreamClientMessageDebugInfo, e error) {
 	var p OnReadStreamRawSentInfo
 	p.ReaderConnectionID = readerConnectionID
 	p.BaseContext = baseContext
-	p.ClientMessage = c
+	p.ClientMessage = clientMessage
 	p.Error = e
 	t.onReadStreamRawSent(p)
+}
+func TopicOnReadStreamUpdateToken(t Topic, readerConnectionID string, baseContext context.Context, tokenLen int, e error) {
+	var p OnReadStreamUpdateTokenInfo
+	p.ReaderConnectionID = readerConnectionID
+	p.BaseContext = baseContext
+	p.TokenLen = tokenLen
+	p.Error = e
+	t.onReadStreamUpdateToken(p)
 }

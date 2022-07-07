@@ -17,3 +17,7 @@ func (s *StatusCode) FromProto(p Ydb.StatusIds_StatusCode) error {
 func (s StatusCode) IsSuccess() bool {
 	return s == StatusSuccess
 }
+
+func (s StatusCode) String() string {
+	return Ydb.StatusIds_StatusCode(s).String()
+}

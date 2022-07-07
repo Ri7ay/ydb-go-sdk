@@ -73,12 +73,14 @@ func TestTopicReaderReconnectorReadMessageBatch(t *testing.T) {
 		opts := readMessageBatchOptions{batcherGetOptions: batcherGetOptions{MaxCount: 10}}
 
 		baseReader1 := NewMockbatchedStreamReader(mc)
-		baseReader1.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).Return(Batch{}, xerrors.Retryable(errors.New("test1")))
-		baseReader1.EXPECT().Close(gomock.Any(), gomock.Any()).Return()
+		baseReader1.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).
+			Return(Batch{}, xerrors.Retryable(errors.New("test1")))
+		baseReader1.EXPECT().Close(gomock.Any(), gomock.Any()).Return(nil)
 
 		baseReader2 := NewMockbatchedStreamReader(mc)
-		baseReader2.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).Return(Batch{}, xerrors.Retryable(errors.New("test2")))
-		baseReader2.EXPECT().Close(gomock.Any(), gomock.Any()).Return()
+		baseReader2.EXPECT().ReadMessageBatch(gomock.Any(), opts).MinTimes(1).
+			Return(Batch{}, xerrors.Retryable(errors.New("test2")))
+		baseReader2.EXPECT().Close(gomock.Any(), gomock.Any()).Return(nil)
 
 		baseReader3 := NewMockbatchedStreamReader(mc)
 		batch := Batch{

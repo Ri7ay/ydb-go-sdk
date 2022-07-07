@@ -49,15 +49,11 @@ func (m *Message) Topic() string {
 	return m.session().Topic
 }
 
-func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize int64) *oneTimeReader {
+func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize int) *oneTimeReader {
 	var reader io.Reader
 	switch codec {
 	case rawtopiccommon.CodecRaw:
 		reader = bytes.NewReader(rawBytes)
-		if uncompressedSize == 0 {
-			// TODO: Migration protocol workaround
-			uncompressedSize = int64(len(rawBytes))
-		}
 	case rawtopiccommon.CodecGzip:
 		gzipReader, err := gzip.NewReader(bytes.NewReader(rawBytes))
 		if err == nil {
@@ -71,7 +67,7 @@ func createReader(codec rawtopiccommon.Codec, rawBytes []byte, uncompressedSize 
 		}
 	}
 
-	return newOneTimeReader(reader, int(uncompressedSize))
+	return newOneTimeReader(reader, uncompressedSize)
 }
 
 type errorReader struct {

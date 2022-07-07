@@ -2,8 +2,7 @@ package trace
 
 import (
 	"context"
-
-	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
+	"io"
 )
 
 // tool gtrace used from ./internal/cmd/gtrace
@@ -20,6 +19,7 @@ type (
 		OnReadUnknownGrpcMessage   func(OnReadUnknownGrpcMessageInfo)
 		OnReadStreamRawReceived    func(OnReadStreamRawReceivedInfo)
 		OnReadStreamRawSent        func(OnReadStreamRawSentInfo)
+		OnReadStreamUpdateToken    func(OnReadStreamUpdateTokenInfo)
 	}
 
 	OnPartitionReadStartInfo struct {
@@ -50,20 +50,40 @@ type (
 	OnReadUnknownGrpcMessageInfo struct {
 		ReaderConnectionID string
 		BaseContext        context.Context
+		ServerMessage      readStreamServerMessageDebugInfo // may be nil
 		Error              error
+	}
+
+	readStreamServerMessageDebugInfo interface {
+		Type() string
+		JsonData() io.Reader
+		IsReadStreamServerMessageDebugInfo()
 	}
 
 	OnReadStreamRawReceivedInfo struct {
 		ReaderConnectionID string
 		BaseContext        context.Context
-		ServerMessage      rawtopicreader.ServerMessage
+		ServerMessage      readStreamServerMessageDebugInfo
 		Error              error
+	}
+
+	readStreamClientMessageDebugInfo interface {
+		Type() string
+		JsonData() io.Reader
+		IsReadStreamClientMessageDebugInfo()
 	}
 
 	OnReadStreamRawSentInfo struct {
 		ReaderConnectionID string
 		BaseContext        context.Context
-		ClientMessage      rawtopicreader.ClientMessage
+		ClientMessage      readStreamClientMessageDebugInfo
+		Error              error
+	}
+
+	OnReadStreamUpdateTokenInfo struct {
+		ReaderConnectionID string
+		BaseContext        context.Context
+		TokenLen           int
 		Error              error
 	}
 )

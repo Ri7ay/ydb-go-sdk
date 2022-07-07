@@ -34,9 +34,11 @@ func (m *MockbatchedStreamReader) EXPECT() *MockbatchedStreamReaderMockRecorder 
 }
 
 // Close mocks base method.
-func (m *MockbatchedStreamReader) Close(ctx context.Context, err error) {
+func (m *MockbatchedStreamReader) Close(ctx context.Context, err error) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Close", ctx, err)
+	ret := m.ctrl.Call(m, "Close", ctx, err)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // Close indicates an expected call of Close.

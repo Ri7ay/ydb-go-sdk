@@ -11,6 +11,12 @@ import (
 
 type ReaderOption func(cfg *readerConfig)
 
+func WithOperationTimeout(timeout time.Duration) ReaderOption {
+	return func(cfg *readerConfig) {
+		cfg.operationTimeout = timeout
+	}
+}
+
 // WithCommitTimeLagTrigger set time lag from first commit message before send commit to server
 // for accumulate many similar-time commits to one server request
 // 0 mean no additional lag and send commit soon as possible

@@ -105,6 +105,12 @@ func (c *Client) StreamRead(
 		return c.rawClient.StreamRead(ctx)
 	}
 
+	var defaultOpts []topicreader.ReaderOption
+	if c.defaultOperationParams.OperationTimeout.HasValue {
+		defaultOpts = append(defaultOpts, topicreader.WithOperationTimeout(c.defaultOperationParams.OperationTimeout.Value))
+	}
+	opts = append(defaultOpts, opts...)
+
 	return topicreader.NewReader(connector, consumer, readSelectors, opts...), nil
 }
 

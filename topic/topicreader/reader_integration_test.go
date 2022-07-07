@@ -31,7 +31,7 @@ func TestReaderWithLocalDB(t *testing.T) {
 
 	db, reader := createDBReader(ctx, t)
 	defer func() {
-		_ = reader.Close()
+		_ = reader.Close(ctx)
 		_ = db.Close(ctx)
 	}()
 
@@ -50,7 +50,6 @@ func TestReaderWithLocalDB(t *testing.T) {
 }
 
 func createDBReader(ctx context.Context, t *testing.T) (ydb.Connection, *topicreader.Reader) {
-	// TODO: Fix connection string to env
 	token := os.Getenv("YDB_TOKEN")
 
 	connectionString := "grpc://localhost:2136?database=/local"

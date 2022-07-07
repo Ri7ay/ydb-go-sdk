@@ -86,7 +86,7 @@ func TestReader_Close(t *testing.T) {
 	for i := range allStates {
 		require.False(t, isCallCompleted(allStates[i]))
 	}
-	require.NoError(t, reader.Close())
+	require.NoError(t, reader.Close(context.Background()))
 
 	// check about all methods stop work after close
 	for i := range allStates {

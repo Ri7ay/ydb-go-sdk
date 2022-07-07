@@ -2,8 +2,11 @@ package rawydb
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/ydb-platform/ydb-go-genproto/protos/Ydb_Issue"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 )
 
@@ -20,6 +23,15 @@ func (issuesPointer *Issues) FromProto(p []*Ydb_Issue.IssueMessage) error {
 	return nil
 }
 
+func (issuesPointer *Issues) String() string {
+	issues := *issuesPointer
+	issuesStrings := make([]string, len(issues))
+	for i := range issues {
+		issuesStrings[i] = issues[i].String()
+	}
+	return strings.Join(issuesStrings, ", ")
+}
+
 type Issue struct {
 	Code    uint32
 	Message string
@@ -34,4 +46,13 @@ func (issue *Issue) FromProto(p *Ydb_Issue.IssueMessage) error {
 	issue.Message = p.GetMessage()
 
 	return issue.Issues.FromProto(p.GetIssues())
+}
+
+func (issue *Issue) String() string {
+	var innerIssues string
+	if len(issue.Issues) > 0 {
+		innerIssues = " (" + issue.Issues.String() + ")"
+	}
+
+	return fmt.Sprintf("message: %v, code: %v%v", issue.Message, issue.Code, innerIssues)
 }
