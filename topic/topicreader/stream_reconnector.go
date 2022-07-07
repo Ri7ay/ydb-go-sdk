@@ -10,6 +10,8 @@ import (
 
 	"github.com/jonboulle/clockwork"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backoff"
+
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/background"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xcontext"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
@@ -127,8 +129,31 @@ func (r *readerReconnector) initChannelsAndClock() {
 func (r *readerReconnector) reconnectionLoop(ctx context.Context) {
 	defer r.handlePanic()
 
-	// TODO: add delay for repeats
+	lastTime := time.Time{}
+	attempt := 0
 	for {
+		now := r.clock.Now()
+		sinceLastTime := now.Sub(lastTime)
+		lastTime = now
+
+		const resetAttemptEmpiricalCoefficient = 10
+		if sinceLastTime > r.connectTimeout*resetAttemptEmpiricalCoefficient {
+			attempt = 0
+		} else {
+			attempt++
+		}
+
+		if attempt > 0 {
+			delay := backoff.Fast.Delay(attempt)
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-r.clock.After(delay):
+				// pass
+			}
+		}
+
 		select {
 		case <-ctx.Done():
 			return

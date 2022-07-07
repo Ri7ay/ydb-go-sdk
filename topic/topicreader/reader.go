@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ydb-platform/ydb-go-sdk/v3/internal/backoff"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/grpcwrapper/rawtopic/rawtopicreader"
 	"github.com/ydb-platform/ydb-go-sdk/v3/internal/xerrors"
 	"github.com/ydb-platform/ydb-go-sdk/v3/scheme"
@@ -180,7 +181,9 @@ func (r *Reader) CommitRanges(ctx context.Context, commitRanges *CommitRages) er
 type readerConfig struct {
 	DefaultBatchConfig readMessageBatchOptions
 	topicStreamReaderConfig
-	operationTimeout time.Duration
+
+	operationTimeout    time.Duration
+	reconnectionBackoff backoff.Backoff
 }
 
 func convertNewParamsToStreamConfig(
@@ -191,6 +194,7 @@ func convertNewParamsToStreamConfig(
 	cfg.topicStreamReaderConfig = newTopicStreamReaderConfig()
 	cfg.Consumer = consumer
 	cfg.operationTimeout = infiniteTimeout // default - infinite timeout
+	cfg.reconnectionBackoff = backoff.Fast
 
 	// make own copy, for prevent changing internal states if readSelectors will change outside
 	cfg.ReadSelectors = make([]ReadSelector, len(readSelectors))
